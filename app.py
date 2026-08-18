@@ -284,6 +284,22 @@ def init_db():
         )
     """)
 
+    # Access grants: gives a user (telecaller or manager) view+edit access to a lead
+    # they don't own, WITHOUT changing ownership or copying the record. Ownership
+    # (owner_id on leads) never changes via this table.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS lead_shares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            granted_by INTEGER,
+            created_at TEXT NOT NULL,
+            UNIQUE(lead_id, user_id),
+            FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+    """)
+
     db.commit()
     db.close()
 
@@ -388,11 +404,24 @@ def require_login():
 
 
 def visible_leads_clause(user):
-    """Returns (sql_fragment, params) restricting leads to what this user may see."""
+    """Returns (sql_fragment, params) restricting leads to what this user may see.
+
+    Rules:
+    - A lead's owner (owner_id) always sees it. Ownership never moves except via
+      /leads/<id>/assign for leads that don't have an owner yet.
+    - Every telecaller's leads are always visible to every manager, tagged with the
+      telecaller's name (managers never "own" a telecaller's lead by seeing it).
+    - Anyone explicitly granted access via lead_shares (a "transfer") sees the lead
+      too, without it changing owner_id — this is how a manager's own leads, or a
+      telecaller's leads, get shared with another telecaller/manager.
+    """
+    shared_clause = "leads.id IN (SELECT lead_id FROM lead_shares WHERE user_id = ?)"
     if user["role"] == "manager":
-        placeholders = ",".join("?" for _ in ESCALATE_STAGES)
-        return f"(owner_id = ? OR stage IN ({placeholders}))", [user["id"], *ESCALATE_STAGES]
-    return "owner_id = ?", [user["id"]]
+        return (
+            f"(owner_id = ? OR owner_id IN (SELECT id FROM users WHERE role = 'telecaller') OR {shared_clause})",
+            [user["id"], user["id"]],
+        )
+    return f"(owner_id = ? OR {shared_clause})", [user["id"], user["id"]]
 
 
 # ---------- Setup / Auth ----------
@@ -1090,6 +1119,28 @@ def lead_detail(lead_id):
     services_selected = (lead["services_required"] or "").split(",") if lead["services_required"] else []
     telecallers = db.execute("SELECT id, name FROM users WHERE role = 'telecaller' ORDER BY name").fetchall()
 
+    is_owner = lead["owner_id"] == user["id"]
+    shared_with = db.execute(
+        """SELECT lead_shares.user_id, users.name, users.role
+           FROM lead_shares JOIN users ON lead_shares.user_id = users.id
+           WHERE lead_shares.lead_id = ? ORDER BY users.name""",
+        (lead_id,),
+    ).fetchall()
+    shareable_users = []
+    if is_owner:
+        already_shared_ids = {row["user_id"] for row in shared_with}
+        if user["role"] == "manager":
+            # Managers already see every telecaller's leads automatically, so sharing
+            # to a telecaller here is only useful for handing a manager's own lead to
+            # a telecaller to work; sharing to another manager is also allowed.
+            all_users = db.execute("SELECT id, name, role FROM users ORDER BY name").fetchall()
+        else:
+            # Telecallers can only send leads to other telecallers. Managers already
+            # see every telecaller lead, so a telecaller "sharing" to a manager would
+            # be meaningless — leave managers out of the list entirely.
+            all_users = db.execute("SELECT id, name, role FROM users WHERE role = 'telecaller' ORDER BY name").fetchall()
+        shareable_users = [u for u in all_users if u["id"] != user["id"] and u["id"] not in already_shared_ids]
+
     return render_template(
         "lead_detail.html", lead=lead, contact=contact, company=company, company_contacts=company_contacts,
         call_logs=call_logs, stages=STAGES,
@@ -1098,7 +1149,7 @@ def lead_detail(lead_id):
         google_presence_opts=GOOGLE_PRESENCE, social_presence_opts=SOCIAL_PRESENCE,
         decision_maker_opts=DECISION_MAKER_OPTIONS, interest_levels=INTEREST_LEVELS,
         priorities=PRIORITIES, budget_ranges=BUDGET_RANGES, lost_reasons=LOST_REASONS,
-        telecallers=telecallers,
+        telecallers=telecallers, is_owner=is_owner, shared_with=shared_with, shareable_users=shareable_users,
     )
 
 
@@ -1156,10 +1207,12 @@ def link_company_to_lead(lead_id):
 @login_required
 def update_lead(lead_id):
     db = get_db()
+    user = current_user()
     f = request.form
-    lead = db.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+    clause, params = visible_leads_clause(user)
+    lead = db.execute(f"SELECT * FROM leads WHERE id = ? AND {clause}", [lead_id, *params]).fetchone()
     if lead is None:
-        flash("Lead not found.", "error")
+        flash("Lead not found, or it's not visible to your account.", "error")
         return redirect(url_for("leads_list"))
 
     stage = f.get("stage", lead["stage"])
@@ -1212,6 +1265,11 @@ def update_lead(lead_id):
 def add_call_log(lead_id):
     db = get_db()
     user = current_user()
+    clause, params = visible_leads_clause(user)
+    lead_ok = db.execute(f"SELECT 1 FROM leads WHERE id = ? AND {clause}", [lead_id, *params]).fetchone()
+    if lead_ok is None:
+        flash("Lead not found, or it's not visible to your account.", "error")
+        return redirect(url_for("leads_list"))
     outcome = request.form.get("outcome", "").strip()
     note = request.form.get("note", "").strip()
 
@@ -1231,7 +1289,15 @@ def add_call_log(lead_id):
 @login_required
 def delete_lead(lead_id):
     db = get_db()
-    lead = db.execute("SELECT name FROM leads WHERE id = ?", (lead_id,)).fetchone()
+    user = current_user()
+    lead = db.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+    if lead is None:
+        flash("Lead not found.", "error")
+        return redirect(url_for("leads_list"))
+    if lead["owner_id"] != user["id"] and user["role"] != "manager":
+        flash("Only the owner or a manager can delete this lead.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+    db.execute("DELETE FROM lead_shares WHERE lead_id = ?", (lead_id,))
     db.execute("DELETE FROM call_logs WHERE lead_id = ?", (lead_id,))
     db.execute("DELETE FROM lead_activities WHERE lead_id = ?", (lead_id,))
     db.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
@@ -1244,15 +1310,92 @@ def delete_lead(lead_id):
 @app.route("/leads/<int:lead_id>/assign", methods=["POST"])
 @manager_required
 def assign_lead(lead_id):
+    """Sets initial ownership for a lead that doesn't have an owner yet (e.g. a
+    freshly imported/unassigned lead). Once a lead has an owner, ownership stays
+    put — use /leads/<id>/share to grant another person view+edit access instead."""
     db = get_db()
+    lead = db.execute("SELECT name, owner_id FROM leads WHERE id = ?", (lead_id,)).fetchone()
+    if lead is None:
+        flash("Lead not found.", "error")
+        return redirect(url_for("leads_list"))
+    if lead["owner_id"]:
+        flash("This lead already has an owner. Use \u201cShare access\u201d to give someone else access instead of reassigning it.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+
     owner_id = request.form.get("owner_id") or None
-    lead = db.execute("SELECT name FROM leads WHERE id = ?", (lead_id,)).fetchone()
     db.execute("UPDATE leads SET owner_id = ? WHERE id = ?", (owner_id, lead_id))
     db.commit()
     owner = db.execute("SELECT name FROM users WHERE id = ?", (owner_id,)).fetchone() if owner_id else None
     log_lead_event(lead_id, "Lead Assigned", owner["name"] if owner else "Unassigned")
     log_activity("Lead Assigned", "lead", lead_id, lead["name"] if lead else "", owner["name"] if owner else "Unassigned")
     flash("Lead assignment updated.", "success")
+    return redirect(url_for("lead_detail", lead_id=lead_id))
+
+
+@app.route("/leads/<int:lead_id>/share", methods=["POST"])
+@login_required
+def share_lead(lead_id):
+    """Grants another user (telecaller or manager) view+edit access to this lead,
+    without changing who owns it and without creating a copy. Only the lead's
+    owner can grant access to it."""
+    db = get_db()
+    user = current_user()
+    lead = db.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+    if lead is None:
+        flash("Lead not found.", "error")
+        return redirect(url_for("leads_list"))
+    if lead["owner_id"] != user["id"]:
+        flash("Only the lead's owner can share access to it.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+
+    grantee_id = request.form.get("user_id")
+    if not grantee_id:
+        flash("Choose a person to share this lead with.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+    grantee_id = int(grantee_id)
+    if grantee_id == user["id"]:
+        flash("You already have access to your own lead.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+
+    grantee = db.execute("SELECT id, name, role FROM users WHERE id = ?", (grantee_id,)).fetchone()
+    if grantee is None:
+        flash("That user doesn't exist.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+    if user["role"] == "telecaller" and grantee["role"] == "manager":
+        flash("Telecallers can only share leads with other telecallers — managers already see every telecaller's leads.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+
+    db.execute(
+        "INSERT OR IGNORE INTO lead_shares (lead_id, user_id, granted_by, created_at) VALUES (?, ?, ?, ?)",
+        (lead_id, grantee_id, user["id"], now_str()),
+    )
+    db.commit()
+    log_lead_event(lead_id, "Access Granted", grantee["name"])
+    log_activity("Access Granted", "lead", lead_id, lead["name"], f"Shared with {grantee['name']}")
+    flash(f"{grantee['name']} can now see and edit this lead.", "success")
+    return redirect(url_for("lead_detail", lead_id=lead_id))
+
+
+@app.route("/leads/<int:lead_id>/unshare/<int:user_id>", methods=["POST"])
+@login_required
+def unshare_lead(lead_id, user_id):
+    """Revokes a previously granted access. Only the lead's owner can revoke it."""
+    db = get_db()
+    user = current_user()
+    lead = db.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+    if lead is None:
+        flash("Lead not found.", "error")
+        return redirect(url_for("leads_list"))
+    if lead["owner_id"] != user["id"]:
+        flash("Only the lead's owner can revoke access.", "error")
+        return redirect(url_for("lead_detail", lead_id=lead_id))
+
+    revoked = db.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
+    db.execute("DELETE FROM lead_shares WHERE lead_id = ? AND user_id = ?", (lead_id, user_id))
+    db.commit()
+    log_lead_event(lead_id, "Access Revoked", revoked["name"] if revoked else "")
+    log_activity("Access Revoked", "lead", lead_id, lead["name"], f"Revoked from {revoked['name']}" if revoked else "")
+    flash("Access revoked.", "success")
     return redirect(url_for("lead_detail", lead_id=lead_id))
 
 

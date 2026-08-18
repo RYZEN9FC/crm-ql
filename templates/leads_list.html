@@ -134,9 +134,7 @@
                 <th>Budget</th>
                 <th>Follow-up</th>
 
-                {% if user.role == 'manager' %}
                 <th>Owner</th>
-                {% endif %}
 
                 <th>Added</th>
             </tr>
@@ -206,8 +204,6 @@
                 </td>
 
 
-                {% if user.role == 'manager' %}
-
                 <td>
 
                     {% if lead.owner_id == user.id %}
@@ -225,9 +221,6 @@
                     {% endif %}
 
                 </td>
-
-                {% endif %}
-
 
                 <td>
                     {{ lead.created_at[:10] }}

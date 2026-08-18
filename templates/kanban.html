@@ -30,7 +30,7 @@
         {% if lead.budget_range %}<div class="kanban-card-budget">Budget: {{ lead.budget_range }}</div>{% endif %}
         {% if lead.follow_up_date %}<div class="kanban-card-followup">Next follow-up: {{ lead.follow_up_date }}</div>{% endif %}
         <div class="kanban-card-foot">
-          <span>{{ lead.owner_name or 'Unassigned' }}{% if user.role == 'manager' and lead.owner_id != user.id %} · via {{ lead.owner_name }}{% endif %}</span>
+          <span>{% if lead.owner_id == user.id %}You{% else %}via {{ lead.owner_name or 'Unassigned' }}{% endif %}</span>
           <span>{{ time_ago(lead.created_at) }}</span>
         </div>
       </a>

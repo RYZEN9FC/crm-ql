@@ -212,7 +212,7 @@
   </div>
 
   <div>
-    {% if current_user.role == 'manager' %}
+    {% if current_user.role == 'manager' and not lead.owner_id %}
     <div class="card">
       <h2 class="section-title">Assign owner</h2>
       <form method="post" action="{{ url_for('assign_lead', lead_id=lead.id) }}" class="inline-form">
@@ -223,7 +223,50 @@
           {% endfor %}
         </select>
       </form>
-      <p class="page-sub">Currently: {{ lead.owner_name or 'Unassigned' }}</p>
+      <p class="page-sub">This lead has no owner yet — pick who it belongs to.</p>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 class="section-title">Owner</h2>
+      <p class="page-sub">{{ lead.owner_name or 'Unassigned' }}{% if lead.owner_id %} keeps this lead — sharing below only grants extra access, it never moves ownership.{% endif %}</p>
+    </div>
+
+    {% if is_owner %}
+    <div class="card">
+      <h2 class="section-title">Share access</h2>
+      <p class="page-sub">Give someone else view + edit access to this lead. It stays yours — this doesn't hand it over or create a copy.</p>
+      {% if shared_with %}
+      <ul class="share-list">
+        {% for person in shared_with %}
+        <li>
+          <span>{{ person.name }} <span class="owner-badge">{{ person.role }}</span></span>
+          <form method="post" action="{{ url_for('unshare_lead', lead_id=lead.id, user_id=person.user_id) }}" class="inline-form">
+            <button type="submit" class="btn btn-link">Revoke</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if shareable_users %}
+      <form method="post" action="{{ url_for('share_lead', lead_id=lead.id) }}" class="inline-form">
+        <select name="user_id">
+          {% for u in shareable_users %}
+          <option value="{{ u.id }}">{{ u.name }} ({{ u.role }})</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary">Share</button>
+      </form>
+      {% endif %}
+    </div>
+    {% elif shared_with %}
+    <div class="card">
+      <h2 class="section-title">Shared with</h2>
+      <ul class="share-list">
+        {% for person in shared_with %}
+        <li><span>{{ person.name }} <span class="owner-badge">{{ person.role }}</span></span></li>
+        {% endfor %}
+      </ul>
     </div>
     {% endif %}
 

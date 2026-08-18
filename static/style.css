@@ -782,6 +782,15 @@ td.phone { color: var(--text-soft); font-variant-numeric: tabular-nums; }
 }
 .owner-badge.owner-self { background: #E9F7EF; color: #2E9964; }
 
+/* ---------- Share list ---------- */
+.share-list { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.share-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.btn-link {
+  background: none; border: none; padding: 0; color: var(--accent);
+  font-size: 13px; cursor: pointer; text-decoration: underline;
+}
+.btn-link:hover { color: var(--accent-dark); }
+
 /* ---------- Import bar ---------- */
 .import-bar {
   display: flex;

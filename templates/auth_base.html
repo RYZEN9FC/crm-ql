@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Lead Desk{% endblock %}</title>
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem('leaddesk-theme');
+    if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  } catch (e) {}
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7">
+</head>
+<body>
+<div class="auth-shell">
+  <div class="auth-card">
+    <button type="button" class="theme-toggle theme-toggle-auth" id="themeToggle" aria-label="Switch between light and dark mode">
+      <span class="theme-toggle-icon theme-toggle-icon-sun">☀</span>
+      <span class="theme-toggle-icon theme-toggle-icon-moon">☾</span>
+    </button>
+    <div class="logo-slot auth-logo">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Company logo" class="company-logo company-logo-light" onerror="this.style.display='none'">
+      <img src="{{ url_for('static', filename='logo-light.png') }}" alt="Company logo" class="company-logo company-logo-dark" onerror="this.style.display='none'">
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</div>
+<script>
+(function () {
+  var themeBtn = document.getElementById('themeToggle');
+  if (!themeBtn) return;
+  themeBtn.addEventListener('click', function () {
+    var root = document.documentElement;
+    var isLight = root.getAttribute('data-theme') === 'light';
+    var next = isLight ? 'dark' : 'light';
+    if (next === 'dark') {
+      root.removeAttribute('data-theme');
+    } else {
+      root.setAttribute('data-theme', 'light');
+    }
+    try { localStorage.setItem('leaddesk-theme', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

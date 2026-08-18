@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }} · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{{ company.name }}</h1>
+    <p class="page-sub">{{ company.industry or 'No industry set' }} · <span class="owner-badge">{{ company.status or 'Prospect' }}</span></p>
+  </div>
+  <form method="post" action="{{ url_for('delete_company', company_id=company.id) }}" onsubmit="return confirm('Delete this company and all its contacts?')">
+    <button type="submit" class="btn btn-danger btn-sm">Delete company</button>
+  </form>
+</div>
+
+<div class="detail-grid">
+  <div>
+    <div class="card">
+      <h2 class="section-title">Company details</h2>
+      <div class="lead-meta-row"><span class="k">Company Phone</span><span class="v">{{ company.phone or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Alternate Phone</span><span class="v">{{ company.alternate_phone or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Company Email</span><span class="v">{{ company.email or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Website</span><span class="v">{{ company.website or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">GBP Link</span><span class="v">{% if company.gbp_link %}<a href="{{ company.gbp_link }}" target="_blank" rel="noopener">{{ company.gbp_link }}</a>{% else %}—{% endif %}</span></div>
+      <div class="lead-meta-row"><span class="k">Address</span><span class="v">{{ company.address or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">City / State</span><span class="v">{{ company.city or '—' }}{% if company.state %}, {{ company.state }}{% endif %}</span></div>
+      <div class="lead-meta-row"><span class="k">Pincode</span><span class="v">{{ company.pincode or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Country</span><span class="v">{{ company.country or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Billing address</span><span class="v">{{ company.billing_address or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">GSTIN</span><span class="v">{{ company.gstin or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">PAN</span><span class="v">{{ company.pan or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">CIN</span><span class="v">{{ company.cin or '—' }}</span></div>
+      {% if company.notes %}<div class="lead-meta-row"><span class="k">Notes</span><span class="v">{{ company.notes }}</span></div>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Edit company</h2>
+      <form method="post" action="{{ url_for('edit_company', company_id=company.id) }}">
+        <div class="form-group"><label>Company name *</label><input type="text" name="name" value="{{ company.name }}" required></div>
+        <div class="form-row">
+          <div class="form-group"><label>Industry</label><input type="text" name="industry" value="{{ company.industry or '' }}"></div>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status">
+              {% for s in statuses %}<option value="{{ s }}" {% if s == company.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group"><label>Website</label><input type="text" name="website" value="{{ company.website or '' }}"></div>
+        <div class="form-group"><label>GBP Link <span class="page-sub" style="display:inline">(Google Business Profile)</span></label><input type="text" name="gbp_link" value="{{ company.gbp_link or '' }}" placeholder="https://g.page/…"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Company Email</label><input type="email" name="email" value="{{ company.email or '' }}"></div>
+          <div class="form-group"><label>Company Phone</label><input type="text" name="phone" value="{{ company.phone or '' }}"></div>
+          <div class="form-group"><label>Alternate Phone</label><input type="text" name="alternate_phone" value="{{ company.alternate_phone or '' }}"></div>
+        </div>
+        <div class="form-group"><label>Address</label><textarea name="address">{{ company.address or '' }}</textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label>City</label><input type="text" name="city" value="{{ company.city or '' }}"></div>
+          <div class="form-group"><label>State</label><input type="text" name="state" value="{{ company.state or '' }}"></div>
+          <div class="form-group"><label>Pincode</label><input type="text" name="pincode" value="{{ company.pincode or '' }}"></div>
+        </div>
+        <div class="form-group"><label>Country</label><input type="text" name="country" value="{{ company.country or 'India' }}"></div>
+        <div class="form-group"><label>Billing address</label><textarea name="billing_address">{{ company.billing_address or '' }}</textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label>GSTIN</label><input type="text" name="gstin" value="{{ company.gstin or '' }}"></div>
+          <div class="form-group"><label>PAN</label><input type="text" name="pan" value="{{ company.pan or '' }}"></div>
+          <div class="form-group"><label>CIN</label><input type="text" name="cin" value="{{ company.cin or '' }}"></div>
+        </div>
+        <div class="form-group"><label>Notes</label><textarea name="notes">{{ company.notes or '' }}</textarea></div>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Add a contact</h2>
+      <form method="post" action="{{ url_for('add_contact', company_id=company.id) }}">
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+          <label>Designation</label>
+          <input type="text" name="designation" placeholder="e.g. Procurement Manager">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="text" name="phone">
+          </div>
+          <div class="form-group">
+            <label>Alternate Phone</label>
+            <input type="text" name="alternate_phone">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email">
+          </div>
+          <div class="form-group">
+            <label>LinkedIn</label>
+            <input type="text" name="linkedin" placeholder="linkedin.com/in/…">
+          </div>
+        </div>
+        <label class="check-line"><input type="checkbox" name="is_primary" value="1"> Primary contact</label>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+        </div>
+        <button type="submit" class="btn btn-accent">Add contact</button>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <h2 class="section-title">Contacts</h2>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Designation</th><th>Phone</th><th>Email</th><th>LinkedIn</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for c in contacts %}
+          <tr>
+            <td>{{ c.name }}{% if c.is_primary %} <span class="owner-badge owner-self">Primary</span>{% endif %}</td>
+            <td>{{ c.designation or '—' }}</td>
+            <td class="phone">{{ c.phone or '—' }}</td>
+            <td>{{ c.email or '—' }}</td>
+            <td>{% if c.linkedin %}<a href="{{ c.linkedin }}" target="_blank" rel="noopener">Profile</a>{% else %}—{% endif %}</td>
+            <td>
+              <form method="post" action="{{ url_for('delete_contact', contact_id=c.id) }}" onsubmit="return confirm('Delete this contact?')">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6"><div class="empty-state">No contacts saved for this company yet.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title">Leads</h2>
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Contact</th><th>Stage</th><th>Interest</th><th>Owner</th><th>Added</th></tr></thead>
+        <tbody>
+          {% for l in leads %}
+          <tr onclick="window.location='{{ url_for('lead_detail', lead_id=l.id) }}'" style="cursor:pointer">
+            <td>{{ l.name }}</td>
+            <td><span class="stage-pill stage-{{ l.stage|slug }}">{{ l.stage }}</span></td>
+            <td>{% if l.interest_level %}<span class="interest-badge interest-{{ l.interest_level|lower }}">{{ l.interest_level }}</span>{% else %}—{% endif %}</td>
+            <td>{{ l.owner_name or 'Unassigned' }}</td>
+            <td>{{ l.created_at[:10] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5"><div class="empty-state">No leads yet for this company.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if current_user.role == 'manager' %}
+    <h2 class="section-title">Invoices</h2>
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Invoice #</th><th>Date</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for inv in invoices %}
+          <tr onclick="window.location='{{ url_for('invoice_detail', invoice_id=inv.id) }}'" style="cursor:pointer">
+            <td>{{ inv.invoice_no }}</td>
+            <td>{{ inv.invoice_date }}</td>
+            <td>₹{{ '%.2f'|format(inv.total_amount) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3"><div class="empty-state">No invoices yet for this company.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <h2 class="section-title">Activity timeline</h2>
+    <div class="card">
+      {% if activity %}
+        <div class="lead-timeline">
+        {% for ev in activity %}
+        <div class="timeline-entry">
+          <div class="timeline-time">{{ ev.created_at }}</div>
+          <div class="timeline-body">
+            <span class="timeline-event">{{ ev.action }}</span>
+            {% if ev.details %}<span class="timeline-detail">{{ ev.details }}</span>{% endif %}
+            <span class="timeline-user">— {{ ev.user_name or 'System' }}</span>
+          </div>
+        </div>
+        {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No activity logged for this company yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

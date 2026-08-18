@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Kanban · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Leads · Kanban</h1>
+    <p class="page-sub">Drag a card into another column to move its stage.</p>
+  </div>
+  <a href="{{ url_for('leads_list') }}" class="btn btn-outline btn-sm">List view</a>
+</div>
+
+<div class="kanban-board">
+  {% for stage in stages %}
+  <div class="kanban-col" data-stage="{{ stage }}">
+    <div class="kanban-col-head">
+      <span class="kanban-dot dot-{{ stage|slug }}"></span>
+      <span class="kanban-col-title">{{ stage }}</span>
+      <span class="kanban-col-count">{{ columns[stage]|length }}</span>
+    </div>
+    <div class="kanban-col-body" data-stage="{{ stage }}">
+      {% for lead in columns[stage] %}
+      <a class="kanban-card interest-border-{{ (lead.interest_level or '')|lower }}" draggable="true" data-id="{{ lead.id }}" href="{{ url_for('lead_detail', lead_id=lead.id) }}">
+        <div class="kanban-card-top">
+          <span class="avatar-circle">{{ lead.name[0]|upper }}</span>
+          <span class="kanban-card-name">{{ lead.company_name or lead.name }}</span>
+          {% if lead.interest_level %}<span class="interest-badge interest-{{ lead.interest_level|lower }}">{{ lead.interest_level }}</span>{% endif %}
+        </div>
+        <div class="kanban-card-contact">{{ lead.name }}</div>
+        <div class="kanban-card-phone">{{ lead.phone }}</div>
+        {% if lead.budget_range %}<div class="kanban-card-budget">Budget: {{ lead.budget_range }}</div>{% endif %}
+        {% if lead.follow_up_date %}<div class="kanban-card-followup">Next follow-up: {{ lead.follow_up_date }}</div>{% endif %}
+        <div class="kanban-card-foot">
+          <span>{{ lead.owner_name or 'Unassigned' }}{% if user.role == 'manager' and lead.owner_id != user.id %} · via {{ lead.owner_name }}{% endif %}</span>
+          <span>{{ time_ago(lead.created_at) }}</span>
+        </div>
+      </a>
+      {% else %}
+      <div class="kanban-empty">No leads here</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function() {
+  const board = document.querySelector('.kanban-board');
+  if (board) {
+    board.addEventListener('wheel', (e) => {
+      const colBody = e.target.closest('.kanban-col-body');
+      // If the column under the cursor has its own vertical overflow, let it scroll normally.
+      if (colBody && colBody.scrollHeight > colBody.clientHeight) return;
+      board.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+  }
+
+  let draggedId = null;
+  let draggedCard = null;
+
+  document.querySelectorAll('.kanban-card').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      draggedId = card.dataset.id;
+      draggedCard = card;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => card.classList.add('dragging'), 0);
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+    });
+    // Prevent the wrapping <a> from navigating when the user was actually dragging
+    card.addEventListener('click', (e) => {
+      if (card.dataset.justDragged === '1') {
+        e.preventDefault();
+        card.dataset.justDragged = '0';
+      }
+    });
+  });
+
+  document.querySelectorAll('.kanban-col-body').forEach(col => {
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      col.classList.add('drag-over');
+    });
+    col.addEventListener('dragleave', () => {
+      col.classList.remove('drag-over');
+    });
+    col.addEventListener('drop', (e) => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const newStage = col.dataset.stage;
+      if (!draggedId || !draggedCard) return;
+      if (draggedCard.dataset.justDragged !== undefined) draggedCard.dataset.justDragged = '1';
+
+      col.appendChild(draggedCard);
+      updateCounts();
+
+      fetch(`/leads/${draggedId}/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: newStage })
+      }).then(r => r.json()).then(data => {
+        if (!data.ok) {
+          alert(data.error || 'Could not move this lead. Refreshing.');
+          location.reload();
+        }
+      }).catch(() => location.reload());
+    });
+  });
+
+  function updateCounts() {
+    document.querySelectorAll('.kanban-col').forEach(colWrap => {
+      const stage = colWrap.dataset.stage;
+      const body = colWrap.querySelector('.kanban-col-body');
+      const count = body.querySelectorAll('.kanban-card').length;
+      colWrap.querySelector('.kanban-col-count').textContent = count;
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.name }} · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{{ lead.name }}</h1>
+    <p class="page-sub">
+      <span class="stage-pill stage-{{ lead.stage|slug }}">{{ lead.stage }}</span>
+      {% if lead.company_name %}<a href="{{ url_for('company_detail', company_id=lead.company_pk) }}" class="company-link">{{ lead.company_name }}</a>{% endif %}
+      {% if lead.interest_level %}<span class="interest-badge interest-{{ lead.interest_level|lower }}">{{ lead.interest_level }}</span>{% endif %}
+    </p>
+  </div>
+  <form method="post" action="{{ url_for('delete_lead', lead_id=lead.id) }}" onsubmit="return confirm('Delete this lead permanently?')">
+    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+  </form>
+</div>
+
+<div class="detail-grid-wide">
+  <div>
+    <div class="card">
+      <h2 class="section-title">Identity</h2>
+      <div class="lead-meta-row"><span class="k">Company</span><span class="v">{% if lead.company_name %}<a href="{{ url_for('company_detail', company_id=lead.company_pk) }}">{{ lead.company_name }}</a>{% else %}—{% endif %}</span></div>
+      <div class="lead-meta-row"><span class="k">GBP Link</span><span class="v">{% if company and company.gbp_link %}<a href="{{ company.gbp_link }}" target="_blank" rel="noopener">{{ company.gbp_link }}</a>{% else %}—{% endif %}</span></div>
+      <div class="lead-meta-row"><span class="k">Contact</span><span class="v">{{ lead.name }}{% if lead.designation %} · {{ lead.designation }}{% endif %}</span></div>
+      <div class="lead-meta-row"><span class="k">Phone</span><span class="v">{{ lead.phone }}</span></div>
+      <div class="lead-meta-row"><span class="k">Alt. phone</span><span class="v">{{ lead.alternate_phone or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Email</span><span class="v">{{ lead.email or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Industry</span><span class="v">{{ lead.industry or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Source</span><span class="v">{{ lead.source or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Owner</span><span class="v">{{ lead.owner_name or 'Unassigned' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Added</span><span class="v">{{ lead.created_at[:10] }}</span></div>
+    </div>
+
+    {% if lead.company_pk %}
+    <div class="card">
+      <h2 class="section-title">Contacts at {{ lead.company_name }}</h2>
+      <p class="page-sub">Everyone you've talked to at this company — including anyone added from this lead or from the company page.</p>
+      {% if company_contacts %}
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Name</th><th>Designation</th><th>Phone</th><th>Email</th><th>LinkedIn</th><th></th></tr></thead>
+          <tbody>
+            {% for c in company_contacts %}
+            <tr>
+              <td>
+                {{ c.name }}
+                {% if c.is_primary %} <span class="owner-badge owner-self">Primary</span>{% endif %}
+                {% if c.id == lead.contact_id %} <span class="owner-badge">This lead</span>{% endif %}
+              </td>
+              <td>{{ c.designation or '—' }}</td>
+              <td class="phone">{{ c.phone or '—' }}</td>
+              <td>{{ c.email or '—' }}</td>
+              <td>{% if c.linkedin %}<a href="{{ c.linkedin }}" target="_blank" rel="noopener">Profile</a>{% else %}—{% endif %}</td>
+              <td>
+                <form method="post" action="{{ url_for('delete_contact', contact_id=c.id) }}" onsubmit="return confirm('Delete this contact?')">
+                  <input type="hidden" name="next_lead_id" value="{{ lead.id }}">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">No contacts saved for this company yet.</div>
+      {% endif %}
+
+      <details class="add-contact-details">
+        <summary>Add another contact at this company</summary>
+        <form method="post" action="{{ url_for('add_contact', company_id=lead.company_pk) }}" style="margin-top:14px;">
+          <input type="hidden" name="next_lead_id" value="{{ lead.id }}">
+          <div class="form-group"><label>Name *</label><input type="text" name="name" required></div>
+          <div class="form-group"><label>Designation</label><input type="text" name="designation" placeholder="e.g. Procurement Manager"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Phone</label><input type="text" name="phone"></div>
+            <div class="form-group"><label>Alternate Phone</label><input type="text" name="alternate_phone"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Email</label><input type="email" name="email"></div>
+            <div class="form-group"><label>LinkedIn</label><input type="text" name="linkedin" placeholder="linkedin.com/in/…"></div>
+          </div>
+          <label class="check-line"><input type="checkbox" name="is_primary" value="1"> Primary contact</label>
+          <div class="form-group"><label>Notes</label><textarea name="notes"></textarea></div>
+          <button type="submit" class="btn btn-accent">Add contact</button>
+        </form>
+      </details>
+    </div>
+    {% else %}
+    <div class="card">
+      <h2 class="section-title">Contacts</h2>
+      <p class="page-sub">This lead isn't linked to a company yet, so there's no shared contact list for it. Link one below — it takes a second and unlocks adding other people at the same company.</p>
+      <form method="post" action="{{ url_for('link_company_to_lead', lead_id=lead.id) }}" id="linkCompanyForm">
+        <div class="form-group">
+          <label>Company name</label>
+          <input type="text" id="linkCompanyName" name="company_name" placeholder="Start typing to find or create…" autocomplete="off" required>
+          <input type="hidden" name="company_id" id="linkCompanyIdField">
+          <div id="linkCompanyMatches" class="match-panel" style="display:none"></div>
+        </div>
+        <button type="submit" class="btn btn-accent">Link company</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 class="section-title">Update lead</h2>
+      <form method="post" action="{{ url_for('update_lead', lead_id=lead.id) }}" id="updateLeadForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Stage</label>
+            <select name="stage" id="stageSelect">
+              {% for stage in stages %}
+              <option value="{{ stage }}" {% if stage == lead.stage %}selected{% endif %}>{{ stage }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" id="lostReasonWrap" style="{% if lead.stage != 'Lost' %}display:none{% endif %}">
+            <label>Lost reason</label>
+            <select name="lost_reason">
+              <option value="">—</option>
+              {% for r in lost_reasons %}<option value="{{ r }}" {% if r == lead.lost_reason %}selected{% endif %}>{{ r }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Interest Level</label>
+            <select name="interest_level">
+              <option value="">—</option>
+              {% for o in interest_levels %}<option value="{{ o }}" {% if o == lead.interest_level %}selected{% endif %}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Priority</label>
+            <select name="priority">
+              <option value="">—</option>
+              {% for o in priorities %}<option value="{{ o }}" {% if o == lead.priority %}selected{% endif %}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Decision Maker</label>
+            <select name="decision_maker">
+              <option value="">—</option>
+              {% for o in decision_maker_opts %}<option value="{{ o }}" {% if o == lead.decision_maker %}selected{% endif %}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Budget Range</label>
+            <select name="budget_range">
+              <option value="">—</option>
+              {% for o in budget_ranges %}<option value="{{ o }}" {% if o == lead.budget_range %}selected{% endif %}>{{ o }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Follow-up date</label>
+            <input type="date" name="follow_up_date" value="{{ lead.follow_up_date or '' }}">
+          </div>
+          <div class="form-group"><label>Estimated Project Value</label><input type="text" name="estimated_project_value" value="{{ lead.estimated_project_value or '' }}"></div>
+          <div class="form-group"><label>Expected Timeline</label><input type="text" name="expected_timeline" value="{{ lead.expected_timeline or '' }}"></div>
+          <div class="form-group"><label>Industry</label><input type="text" name="industry" value="{{ lead.industry or '' }}"></div>
+          <div class="form-group"><label>Designation</label><input type="text" name="designation" value="{{ lead.designation or '' }}"></div>
+          <div class="form-group"><label>Alternate phone</label><input type="text" name="alternate_phone" value="{{ lead.alternate_phone or '' }}"></div>
+          <div class="form-group">
+            <label>Tags</label>
+            <input type="text" name="tags" value="{{ lead.tags or '' }}" placeholder="comma separated">
+          </div>
+          <div class="form-group">
+            <label>Website Status</label>
+            <select name="website_status"><option value="">—</option>{% for o in website_status_opts %}<option value="{{ o }}" {% if o==lead.website_status %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group"><label>Website URL</label><input type="text" name="website_url" value="{{ lead.website_url or '' }}"></div>
+          <div class="form-group">
+            <label>Website Quality</label>
+            <select name="website_quality"><option value="">—</option>{% for o in website_quality_opts %}<option value="{{ o }}" {% if o==lead.website_quality %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group">
+            <label>Google Presence</label>
+            <select name="google_presence"><option value="">—</option>{% for o in google_presence_opts %}<option value="{{ o }}" {% if o==lead.google_presence %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group">
+            <label>Social Presence</label>
+            <select name="social_presence"><option value="">—</option>{% for o in social_presence_opts %}<option value="{{ o }}" {% if o==lead.social_presence %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+          </div>
+        </div>
+
+        <h2 class="section-title" style="margin-top:14px;">Services required</h2>
+        <div class="checkbox-grid">
+          {% for s in services %}
+          <label class="check-line"><input type="checkbox" name="services_required" value="{{ s }}" class="service-check" {% if s in services_selected %}checked{% endif %}> {{ s }}</label>
+          {% endfor %}
+        </div>
+        <div class="form-group" id="otherServiceWrap" style="{% if 'Other' not in services_selected %}display:none{% endif %}">
+          <label>Other service description</label>
+          <input type="text" name="other_service_description" value="{{ lead.other_service_description or '' }}">
+        </div>
+
+        <div class="form-row" style="margin-top:6px;">
+          <div class="form-group" style="flex-basis:100%">
+            <label>Qualification Notes</label>
+            <textarea name="qualification_notes">{{ lead.qualification_notes or '' }}</textarea>
+          </div>
+          <div class="form-group" style="flex-basis:100%">
+            <label>Requirement Notes</label>
+            <textarea name="requirement_notes">{{ lead.requirement_notes or '' }}</textarea>
+          </div>
+          <div class="form-group" style="flex-basis:100%">
+            <label>Internal Notes</label>
+            <textarea name="internal_notes">{{ lead.internal_notes or '' }}</textarea>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    {% if current_user.role == 'manager' %}
+    <div class="card">
+      <h2 class="section-title">Assign owner</h2>
+      <form method="post" action="{{ url_for('assign_lead', lead_id=lead.id) }}" class="inline-form">
+        <select name="owner_id" onchange="this.form.submit()">
+          <option value="">Unassigned</option>
+          {% for tc in telecallers %}
+          <option value="{{ tc.id }}" {% if lead.owner_id == tc.id %}selected{% endif %}>{{ tc.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <p class="page-sub">Currently: {{ lead.owner_name or 'Unassigned' }}</p>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 class="section-title">Log a call</h2>
+      <form method="post" action="{{ url_for('add_call_log', lead_id=lead.id) }}">
+        <div class="form-group">
+          <label>Outcome</label>
+          <select name="outcome">
+            <option>Answered</option>
+            <option>No answer</option>
+            <option>Callback requested</option>
+            <option>Not interested</option>
+            <option>Wrong number</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Note</label>
+          <textarea name="note" placeholder="What happened on this call?"></textarea>
+        </div>
+        <button type="submit" class="btn btn-accent">Save call log</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Lead timeline</h2>
+      {% if timeline_events %}
+        <div class="lead-timeline">
+        {% for ev in timeline_events %}
+        <div class="timeline-entry">
+          <div class="timeline-time">{{ ev.created_at }}</div>
+          <div class="timeline-body">
+            <span class="timeline-event">{{ ev.event }}</span>
+            {% if ev.detail %}<span class="timeline-detail">{{ ev.detail }}</span>{% endif %}
+            <span class="timeline-user">— {{ ev.user_name or 'System' }}</span>
+          </div>
+        </div>
+        {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No activity logged yet.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Call history</h2>
+      {% if call_logs %}
+        {% for log in call_logs %}
+        <div class="call-entry">
+          <div class="call-entry-head">
+            <span class="call-entry-outcome">{{ log.outcome or 'Logged' }}</span>
+            <span class="call-entry-time">{{ log.created_at }}</span>
+          </div>
+          {% if log.note %}<div class="call-entry-note">{{ log.note }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">No calls logged yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('stageSelect').addEventListener('change', function() {
+  document.getElementById('lostReasonWrap').style.display = this.value === 'Lost' ? 'block' : 'none';
+});
+const otherCheck = document.querySelector('.service-check[value="Other"]');
+const otherWrap = document.getElementById('otherServiceWrap');
+if (otherCheck) { otherCheck.addEventListener('change', () => { otherWrap.style.display = otherCheck.checked ? 'block' : 'none'; }); }
+
+(function () {
+  const nameField = document.getElementById('linkCompanyName');
+  if (!nameField) return; // lead already has a company linked, this form isn't on the page
+  const idField = document.getElementById('linkCompanyIdField');
+  const matches = document.getElementById('linkCompanyMatches');
+
+  let debounceTimer;
+  nameField.addEventListener('input', () => {
+    idField.value = '';
+    clearTimeout(debounceTimer);
+    const term = nameField.value.trim();
+    if (term.length < 2) { matches.style.display = 'none'; return; }
+    debounceTimer = setTimeout(() => {
+      fetch(`/api/companies/check?name=${encodeURIComponent(term)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (!data.matches || !data.matches.length) { matches.style.display = 'none'; return; }
+          matches.innerHTML = '<div class="match-title">Possible existing matches — use one, or keep typing to create new:</div>' +
+            data.matches.map(m => `<button type="button" class="match-item" data-id="${m.id}" data-name="${(m.name||'').replace(/"/g,'&quot;')}">${m.name}${m.industry ? ' · '+m.industry : ''}</button>`).join('');
+          matches.style.display = 'block';
+          matches.querySelectorAll('.match-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+              idField.value = btn.dataset.id;
+              nameField.value = btn.dataset.name;
+              matches.style.display = 'none';
+            });
+          });
+        });
+    }, 250);
+  });
+})();
+</script>
+{% endblock %}

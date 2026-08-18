@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Invoices · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1 class="page-title">Invoices</h1><p class="page-sub">Create and download tax invoices using saved company contacts.</p></div><a class="btn btn-accent" href="{{ url_for('invoice_new') }}">+ New invoice</a></div>
+<div class="table-card"><table><thead><tr><th>Invoice</th><th>Date</th><th>Bill to</th><th>Total</th><th>Created</th></tr></thead><tbody>
+{% for i in invoices %}<tr onclick="window.location='{{ url_for('invoice_detail', invoice_id=i.id) }}'" style="cursor:pointer"><td><b>{{ i.invoice_no }}</b></td><td>{{ i.invoice_date }}</td><td>{{ i.bill_name }}</td><td>₹{{ '%.2f'|format(i.total_amount) }}</td><td>{{ i.created_at[:10] }}</td></tr>
+{% else %}<tr><td colspan="5"><div class="empty-state">No invoices yet.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

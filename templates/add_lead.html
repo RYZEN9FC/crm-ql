@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Add Lead · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Add a lead</h1>
+    <p class="page-sub">Step 1: find or create the company. Step 2: add the contact and lead details. One save does it all.</p>
+  </div>
+</div>
+
+<form class="form-card form-card-wide" method="post" action="{{ url_for('add_lead') }}" id="addLeadForm">
+<div class="form-grid-2col">
+<div>
+
+  <h2 class="section-title">Step 1 · Company</h2>
+  <div class="form-group">
+    <label>Company name *</label>
+    <input type="text" id="companyName" name="company_name" placeholder="Start typing…" autocomplete="off" required>
+    <input type="hidden" name="company_id" id="companyIdField">
+    <div id="companyMatches" class="match-panel" style="display:none"></div>
+    <div id="companyPicked" class="match-picked" style="display:none">
+      Using existing company: <strong id="companyPickedName"></strong>
+      <button type="button" class="btn btn-outline btn-sm" id="companyPickedClear">Change</button>
+    </div>
+  </div>
+  <div class="form-group" id="newCompanyExtra">
+    <label>Industry</label>
+    <input type="text" name="industry" id="industryField" placeholder="e.g. Pharma, Manufacturing">
+  </div>
+  <div class="form-group">
+    <label>GBP Link <span class="page-sub" style="display:inline">(Google Business Profile)</span></label>
+    <input type="text" name="gbp_link" placeholder="https://g.page/…">
+  </div>
+
+  <h2 class="section-title">Step 2 · Contact</h2>
+  <div class="form-group">
+    <label>Contact name *</label>
+    <input type="text" id="contactName" name="contact_name" required>
+    <input type="hidden" name="contact_id" id="contactIdField">
+    <div id="contactMatches" class="match-panel" style="display:none"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Designation</label>
+      <input type="text" name="designation" placeholder="e.g. Procurement Manager">
+    </div>
+    <div class="form-group">
+      <label>Phone</label>
+      <input type="text" name="phone" id="contactPhone">
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Alternate phone</label>
+      <input type="text" name="alternate_phone">
+    </div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" name="email" id="contactEmail">
+    </div>
+  </div>
+
+  <h2 class="section-title">Other</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Source</label>
+      <input type="text" name="source" placeholder="e.g. Facebook, referral, walk-in">
+    </div>
+    <div class="form-group">
+      <label>Follow-up date</label>
+      <input type="date" name="follow_up_date">
+    </div>
+  </div>
+  <div class="form-group">
+    <label>Tags</label>
+    <input type="text" name="tags" placeholder="comma separated, e.g. hot, budget">
+  </div>
+
+</div>
+<div>
+
+  <h2 class="section-title">Website Qualification</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Website Status</label>
+      <select name="website_status">
+        <option value="">—</option>
+        {% for o in website_status_opts %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Website URL</label>
+      <input type="text" name="website_url" placeholder="company.com">
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Website Quality</label>
+      <select name="website_quality">
+        <option value="">—</option>
+        {% for o in website_quality_opts %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Google Presence</label>
+      <select name="google_presence">
+        <option value="">—</option>
+        {% for o in google_presence_opts %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Social Presence</label>
+      <select name="social_presence">
+        <option value="">—</option>
+        {% for o in social_presence_opts %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <h2 class="section-title">Services Required</h2>
+  <div class="checkbox-grid">
+    {% for s in services %}
+    <label class="check-line"><input type="checkbox" name="services_required" value="{{ s }}" class="service-check"> {{ s }}</label>
+    {% endfor %}
+  </div>
+  <div class="form-group" id="otherServiceWrap" style="display:none">
+    <label>Other service description</label>
+    <input type="text" name="other_service_description">
+  </div>
+
+  <h2 class="section-title">Qualification</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Decision Maker</label>
+      <select name="decision_maker">
+        <option value="">—</option>
+        {% for o in decision_maker_opts %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Interest Level</label>
+      <select name="interest_level">
+        <option value="">—</option>
+        {% for o in interest_levels %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Priority</label>
+      <select name="priority">
+        <option value="">—</option>
+        {% for o in priorities %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <h2 class="section-title">Commercial</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Budget Range</label>
+      <select name="budget_range">
+        <option value="">—</option>
+        {% for o in budget_ranges %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Estimated Project Value</label>
+      <input type="text" name="estimated_project_value" placeholder="e.g. ₹75,000">
+    </div>
+    <div class="form-group">
+      <label>Expected Timeline</label>
+      <input type="text" name="expected_timeline" placeholder="e.g. 4-6 weeks">
+    </div>
+  </div>
+
+  <h2 class="section-title">Notes</h2>
+  <div class="form-group">
+    <label>Qualification Notes</label>
+    <textarea name="qualification_notes"></textarea>
+  </div>
+  <div class="form-group">
+    <label>Requirement Notes</label>
+    <textarea name="requirement_notes"></textarea>
+  </div>
+  <div class="form-group">
+    <label>Internal Notes</label>
+    <textarea name="internal_notes"></textarea>
+  </div>
+
+</div>
+</div>
+
+  <button type="submit" class="btn btn-accent" style="margin-top: 6px;">Add Lead</button>
+</form>
+
+<script>
+(function(){
+  const companyName = document.getElementById('companyName');
+  const companyIdField = document.getElementById('companyIdField');
+  const companyMatches = document.getElementById('companyMatches');
+  const companyPicked = document.getElementById('companyPicked');
+  const companyPickedName = document.getElementById('companyPickedName');
+  const companyPickedClear = document.getElementById('companyPickedClear');
+  const newCompanyExtra = document.getElementById('newCompanyExtra');
+
+  const contactName = document.getElementById('contactName');
+  const contactIdField = document.getElementById('contactIdField');
+  const contactMatches = document.getElementById('contactMatches');
+  const contactPhone = document.getElementById('contactPhone');
+  const contactEmail = document.getElementById('contactEmail');
+
+  let debounceTimer;
+  companyName.addEventListener('input', () => {
+    companyIdField.value = '';
+    contactIdField.value = '';
+    clearTimeout(debounceTimer);
+    const term = companyName.value.trim();
+    if (term.length < 2) { companyMatches.style.display='none'; return; }
+    debounceTimer = setTimeout(() => {
+      fetch(`/api/companies/check?name=${encodeURIComponent(term)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (!data.matches || !data.matches.length) { companyMatches.style.display='none'; return; }
+          companyMatches.innerHTML = '<div class="match-title">Possible existing matches — use one, or keep typing to create new:</div>' +
+            data.matches.map(m => `<button type="button" class="match-item" data-id="${m.id}" data-name="${(m.name||'').replace(/"/g,'&quot;')}">${m.name}${m.industry ? ' · '+m.industry : ''}</button>`).join('');
+          companyMatches.style.display = 'block';
+          companyMatches.querySelectorAll('.match-item').forEach(btn => {
+            btn.addEventListener('click', () => selectCompany(btn.dataset.id, btn.dataset.name));
+          });
+        });
+    }, 250);
+  });
+
+  function selectCompany(id, name) {
+    companyIdField.value = id;
+    companyName.value = name;
+    companyMatches.style.display = 'none';
+    companyPickedName.textContent = name;
+    companyPicked.style.display = 'block';
+    newCompanyExtra.style.display = 'none';
+    loadContacts(id);
+  }
+
+  companyPickedClear.addEventListener('click', () => {
+    companyIdField.value = '';
+    companyPicked.style.display = 'none';
+    newCompanyExtra.style.display = 'block';
+    companyName.value = '';
+    companyName.focus();
+    contactMatches.style.display = 'none';
+  });
+
+  function loadContacts(companyId) {
+    fetch(`/api/companies/${companyId}/contacts`).then(r => r.json()).then(data => {
+      if (!data.contacts || !data.contacts.length) { contactMatches.style.display='none'; return; }
+      contactMatches.innerHTML = '<div class="match-title">Existing contacts at this company:</div>' +
+        data.contacts.map(c => `<button type="button" class="match-item" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'&quot;')}" data-phone="${c.phone||''}" data-email="${c.email||''}">${c.name}${c.designation ? ' · '+c.designation : ''}${c.is_primary ? ' ★' : ''}</button>`).join('');
+      contactMatches.style.display = 'block';
+      contactMatches.querySelectorAll('.match-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          contactIdField.value = btn.dataset.id;
+          contactName.value = btn.dataset.name;
+          contactPhone.value = btn.dataset.phone;
+          contactEmail.value = btn.dataset.email;
+          contactMatches.style.display = 'none';
+        });
+      });
+    });
+  }
+
+  contactName.addEventListener('input', () => { contactIdField.value = ''; });
+
+  const otherCheck = document.querySelector('.service-check[value="Other"]');
+  const otherWrap = document.getElementById('otherServiceWrap');
+  if (otherCheck) {
+    otherCheck.addEventListener('change', () => { otherWrap.style.display = otherCheck.checked ? 'block' : 'none'; });
+  }
+})();
+</script>
+{% endblock %}

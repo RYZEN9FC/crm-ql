@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-sub">Here's where your pipeline stands today.</p>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ total_leads }}</div>
+    <div class="stat-label">Total leads</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ added_today }}</div>
+    <div class="stat-label">Added today</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ added_week }}</div>
+    <div class="stat-label">Added this week</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ conversion_rate }}%</div>
+    <div class="stat-label">Conversion rate</div>
+  </div>
+</div>
+
+<h2 class="section-title">Pipeline</h2>
+<div class="pipeline">
+  {% for stage in stages %}
+  <a href="{{ url_for('leads_list', stage=stage) }}" class="pipeline-seg {{ stage|slug }}">
+    <div class="pipeline-count">{{ stage_counts[stage] }}</div>
+    <div class="pipeline-label">{{ stage }}</div>
+  </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">Overdue follow-ups</h2>
+<div class="followup-list">
+  {% if followups_overdue %}
+    {% for lead in followups_overdue %}
+    <a href="{{ url_for('lead_detail', lead_id=lead.id) }}" class="followup-row">
+      <span class="name">{{ lead.name }}</span>
+      <span class="meta">{{ lead.phone }} · was due {{ lead.follow_up_date }}</span>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No overdue follow-ups. You're on top of it.</div>
+  {% endif %}
+</div>
+
+<h2 class="section-title">Today's follow-ups</h2>
+<div class="followup-list">
+  {% if followups_today %}
+    {% for lead in followups_today %}
+    <a href="{{ url_for('lead_detail', lead_id=lead.id) }}" class="followup-row">
+      <span class="name">{{ lead.name }}</span>
+      <span class="meta">{{ lead.phone }} · {{ lead.stage }}</span>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">Nothing scheduled for today.</div>
+  {% endif %}
+</div>
+
+{% if team_stats is not none %}
+<h2 class="section-title">Telecaller performance</h2>
+<div class="table-card">
+  <table>
+    <thead>
+      <tr><th>Telecaller</th><th>Calls today</th><th>Leads added</th><th>Interested</th><th>Qualified</th><th>Won</th></tr>
+    </thead>
+    <tbody>
+      {% for t in team_stats %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td>{{ t.calls_today }}</td>
+        <td>{{ t.leads_added }}</td>
+        <td>{{ t.interested }}</td>
+        <td>{{ t.qualified }}</td>
+        <td>{{ t.won }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6"><div class="empty-state">No telecallers added yet.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-title">Monthly statistics</h2>
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ monthly_stats.total_leads }}</div>
+    <div class="stat-label">Total leads (this month)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ monthly_stats.interested_pct }}%</div>
+    <div class="stat-label">Interested %</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ monthly_stats.qualified_pct }}%</div>
+    <div class="stat-label">Qualified %</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ monthly_stats.won_pct }}%</div>
+    <div class="stat-label">Won %</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ monthly_stats.conversion_rate }}%</div>
+    <div class="stat-label">Conversion rate</div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

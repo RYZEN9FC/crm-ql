@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Lead Desk{% endblock %}</title>
+<script>
+// Applied before the stylesheet loads, so there's no flash of the wrong theme.
+(function () {
+  try {
+    var saved = localStorage.getItem('leaddesk-theme');
+    if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  } catch (e) {}
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7">
+</head>
+<body>
+<div class="shell">
+  <div class="mobile-topbar">
+    <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+      <span class="menu-toggle-bar"></span>
+      <span class="menu-toggle-bar"></span>
+      <span class="menu-toggle-bar"></span>
+    </button>
+    <span class="mobile-topbar-title">Lead Desk</span>
+    <a href="{{ url_for('add_lead') }}" class="mobile-topbar-add" aria-label="Add lead">+</a>
+  </div>
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <button type="button" class="sidebar-close" id="sidebarClose" aria-label="Close menu">✕</button>
+    <div class="logo-slot">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Company logo" class="company-logo company-logo-light" onerror="this.style.display='none'">
+      <img src="{{ url_for('static', filename='logo-light.png') }}" alt="Company logo" class="company-logo company-logo-dark" onerror="this.style.display='none'">
+    </div>
+    <div class="brand">
+      <span class="brand-mark">●</span>
+      <span class="brand-name">Lead Desk</span>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark mode">
+        <span class="theme-toggle-icon theme-toggle-icon-sun">☀</span>
+        <span class="theme-toggle-icon theme-toggle-icon-moon">☾</span>
+      </button>
+    </div>
+    <form class="sidebar-search" method="get" action="{{ url_for('global_search') }}">
+      <input type="text" name="q" placeholder="Search company, contact, phone, GSTIN…" value="{{ request.args.get('q','') if request.endpoint == 'global_search' else '' }}">
+    </form>
+    <nav class="nav">
+      <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
+      <a href="{{ url_for('leads_list') }}" class="nav-link {% if request.endpoint in ['leads_list','lead_detail'] %}active{% endif %}">Leads (List)</a>
+      <a href="{{ url_for('leads_kanban') }}" class="nav-link {% if request.endpoint == 'leads_kanban' %}active{% endif %}">Leads (Kanban)</a>
+      <a href="{{ url_for('contacts_list') }}" class="nav-link {% if request.endpoint in ['contacts_list','company_detail'] %}active{% endif %}">Companies</a>
+      {% if current_user and current_user.role == 'manager' %}
+      <a href="{{ url_for('invoices_list') }}" class="nav-link {% if request.endpoint in ['invoices_list','invoice_new','invoice_detail'] %}active{% endif %}">Invoices</a>
+       <a href="{{ url_for('activity_logs_page') }}" class="nav-link {% if request.endpoint == 'activity_logs_page' %}active{% endif %}">Activity Logs</a>
+       <a href="{{ url_for('company_settings') }}" class="nav-link {% if request.endpoint == 'company_settings' %}active{% endif %}">Invoice Settings</a>
+       <a href="{{ url_for('users_list') }}" class="nav-link {% if request.endpoint == 'users_list' %}active{% endif %}">Users</a>
+      {% endif %}
+    </nav>
+    <a href="{{ url_for('add_lead') }}" class="btn btn-primary btn-block">+ Add Lead</a>
+
+    {% if current_user %}
+    <div class="user-card">
+      <div class="user-card-name">{{ current_user.name }}</div>
+      <div class="user-card-role">{{ 'Customer Relations Manager' if current_user.role == 'manager' else 'Telecaller' }}</div>
+      <a href="{{ url_for('logout') }}" class="user-card-logout">Log out</a>
+    </div>
+    {% endif %}
+  </aside>
+
+  <main class="content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script>
+(function () {
+  var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('sidebarBackdrop');
+  var openBtn = document.getElementById('menuToggle');
+  var closeBtn = document.getElementById('sidebarClose');
+  var themeBtn = document.getElementById('themeToggle');
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    backdrop.classList.add('open');
+    document.body.classList.add('sidebar-locked');
+    openBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('open');
+    document.body.classList.remove('sidebar-locked');
+    openBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (openBtn) openBtn.addEventListener('click', openSidebar);
+  if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+  if (backdrop) backdrop.addEventListener('click', closeSidebar);
+
+  // Close the drawer automatically when a nav link is tapped
+  sidebar.querySelectorAll('.nav-link, .btn-block, .user-card-logout').forEach(function (el) {
+    el.addEventListener('click', closeSidebar);
+  });
+
+  // Keep drawer state sane if the viewport is resized past the mobile breakpoint
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 900) closeSidebar();
+  });
+
+  // Light / dark mode toggle, persisted across visits
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      var root = document.documentElement;
+      var isLight = root.getAttribute('data-theme') === 'light';
+      var next = isLight ? 'dark' : 'light';
+      if (next === 'dark') {
+        root.removeAttribute('data-theme');
+      } else {
+        root.setAttribute('data-theme', 'light');
+      }
+      try { localStorage.setItem('leaddesk-theme', next); } catch (e) {}
+    });
+  }
+})();
+</script>
+</body>
+</html>

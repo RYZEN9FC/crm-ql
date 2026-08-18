@@ -1,0 +1,21 @@
+{% extends "auth_base.html" %}
+{% block title %}Set up · Lead Desk{% endblock %}
+{% block content %}
+<h1 class="auth-title">Welcome</h1>
+<p class="auth-sub">No accounts exist yet. Create the first one — it'll be a Customer Relations Manager account, so you can add telecallers afterwards from the Users page.</p>
+<form method="post" action="{{ url_for('setup') }}">
+  <div class="form-group">
+    <label>Your name</label>
+    <input type="text" name="name" required autofocus>
+  </div>
+  <div class="form-group">
+    <label>Username</label>
+    <input type="text" name="username" autocomplete="username" required>
+  </div>
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" name="password" autocomplete="new-password" required>
+  </div>
+  <button type="submit" class="btn btn-accent btn-block">Create account</button>
+</form>
+{% endblock %}

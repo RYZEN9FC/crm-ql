@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Leads · Lead Desk{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Leads</h1>
+        <p class="page-sub">
+            {{ leads|length }} lead{{ '' if leads|length == 1 else 's' }} shown
+        </p>
+    </div>
+
+    <div class="header-actions">
+        <a href="{{ url_for('leads_kanban') }}" class="btn btn-outline btn-sm">
+            Kanban view
+        </a>
+
+        <a href="{{ url_for('export_leads') }}" class="btn btn-outline btn-sm">
+            Export CSV
+        </a>
+    </div>
+</div>
+
+
+<form class="filter-bar" method="get" action="{{ url_for('leads_list') }}">
+
+    <input
+        type="text"
+        name="q"
+        placeholder="Search company, contact, phone, email"
+        value="{{ search }}"
+    >
+
+    <select name="stage" onchange="this.form.submit()">
+        <option value="">All stages</option>
+
+        {% for stage in stages %}
+        <option
+            value="{{ stage }}"
+            {% if stage == stage_filter %}selected{% endif %}
+        >
+            {{ stage }}
+        </option>
+        {% endfor %}
+    </select>
+
+
+    <select name="interest" onchange="this.form.submit()">
+        <option value="">All interest levels</option>
+
+        {% for lvl in interest_levels %}
+        <option
+            value="{{ lvl }}"
+            {% if lvl == interest_filter %}selected{% endif %}
+        >
+            {{ lvl }}
+        </option>
+        {% endfor %}
+    </select>
+
+
+    <input
+        type="text"
+        name="tag"
+        placeholder="Filter by tag"
+        value="{{ tag_filter }}"
+    >
+
+    <button type="submit" class="btn btn-outline btn-sm">
+        Filter
+    </button>
+
+    {% if search or stage_filter or tag_filter or interest_filter %}
+    <a href="{{ url_for('leads_list') }}" class="btn btn-outline btn-sm">
+        Clear
+    </a>
+    {% endif %}
+
+</form>
+
+
+<div class="import-bar">
+
+    <form
+        method="post"
+        action="{{ url_for('import_leads') }}"
+        enctype="multipart/form-data"
+        class="import-form"
+    >
+        <input
+            type="file"
+            name="csv_file"
+            accept=".csv"
+            required
+        >
+
+        <button type="submit" class="btn btn-accent btn-sm">
+            Import CSV
+        </button>
+    </form>
+
+
+    <a
+        href="{{ url_for('download_template') }}"
+        class="btn btn-outline btn-sm"
+    >
+        Download import template (.xlsx)
+    </a>
+
+    <span class="import-hint">
+        Required columns:
+        <code>name, phone</code>.
+        Optional:
+        <code>email, source, tags</code>.
+    </span>
+
+</div>
+
+
+<div class="table-card">
+
+    <table>
+
+        <thead>
+            <tr>
+                <th>Company</th>
+                <th>Contact</th>
+                <th>Phone</th>
+                <th>Interest</th>
+                <th>Priority</th>
+                <th>Stage</th>
+                <th>Budget</th>
+                <th>Follow-up</th>
+
+                {% if user.role == 'manager' %}
+                <th>Owner</th>
+                {% endif %}
+
+                <th>Added</th>
+            </tr>
+        </thead>
+
+
+        <tbody>
+
+            {% for lead in leads %}
+
+            <tr
+                class="clickable-row"
+                data-href="{{ url_for('lead_detail', lead_id=lead.id) }}"
+            >
+
+                <td>
+                    {{ lead.company_name or '—' }}
+                </td>
+
+                <td>
+                    {{ lead.name }}
+                </td>
+
+                <td class="phone">
+                    {{ lead.phone }}
+                </td>
+
+
+                <td>
+
+                    {% if lead.interest_level %}
+
+                    <span
+                        class="interest-badge interest-{{ lead.interest_level|lower }}"
+                    >
+                        {{ lead.interest_level }}
+                    </span>
+
+                    {% else %}
+
+                    —
+
+                    {% endif %}
+
+                </td>
+
+
+                <td>
+                    {{ lead.priority or '—' }}
+                </td>
+
+
+                <td>
+                    <span class="stage-pill stage-{{ lead.stage|slug }}">
+                        {{ lead.stage }}
+                    </span>
+                </td>
+
+
+                <td>
+                    {{ lead.budget_range or '—' }}
+                </td>
+
+
+                <td>
+                    {{ lead.follow_up_date or '—' }}
+                </td>
+
+
+                {% if user.role == 'manager' %}
+
+                <td>
+
+                    {% if lead.owner_id == user.id %}
+
+                    <span class="owner-badge owner-self">
+                        You
+                    </span>
+
+                    {% else %}
+
+                    <span class="owner-badge">
+                        via {{ lead.owner_name or 'Unassigned' }}
+                    </span>
+
+                    {% endif %}
+
+                </td>
+
+                {% endif %}
+
+
+                <td>
+                    {{ lead.created_at[:10] }}
+                </td>
+
+            </tr>
+
+
+            {% else %}
+
+            <tr>
+                <td colspan="10">
+                    <div class="empty-state">
+                        No leads match these filters yet.
+                    </div>
+                </td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    document.querySelectorAll(".clickable-row").forEach(function (row) {
+
+        row.addEventListener("click", function () {
+
+            const url = this.dataset.href;
+
+            if (url) {
+                window.location.href = url;
+            }
+
+        });
+
+    });
+
+});
+</script>
+
+{% endblock %}

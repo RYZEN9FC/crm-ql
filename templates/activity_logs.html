@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Activity Logs · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Activity logs</h1>
+    <p class="page-sub">Every login, lead, company, contact, and invoice change across the team.</p>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="{{ url_for('activity_logs_page') }}">
+  <select name="user" onchange="this.form.submit()">
+    <option value="">All users</option>
+    {% for u in users %}<option value="{{ u.id }}" {% if user_filter == u.id|string %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
+  </select>
+  <select name="action" onchange="this.form.submit()">
+    <option value="">All actions</option>
+    {% for a in actions %}<option value="{{ a }}" {% if a == action_filter %}selected{% endif %}>{{ a }}</option>{% endfor %}
+  </select>
+  <input type="date" name="date" value="{{ date_filter }}" onchange="this.form.submit()">
+  {% if user_filter or action_filter or date_filter %}
+  <a href="{{ url_for('activity_logs_page') }}" class="btn btn-outline btn-sm">Clear</a>
+  {% endif %}
+</form>
+
+<div class="table-card">
+  <table>
+    <thead>
+      <tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.created_at }}</td>
+        <td>{{ log.user_name or 'System' }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.entity_type }}{% if log.entity_label %} · {{ log.entity_label }}{% endif %}</td>
+        <td>{{ log.details or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5"><div class="empty-state">No activity recorded yet.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

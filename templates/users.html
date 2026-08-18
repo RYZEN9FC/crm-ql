@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Users · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Users</h1>
+    <p class="page-sub">Telecallers and Customer Relations Managers who can log in.</p>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div>
+    <div class="form-card">
+      <h2 class="section-title">Add a user</h2>
+      <form method="post" action="{{ url_for('add_user') }}">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" name="username" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" required>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select name="role">
+            <option value="telecaller">Telecaller</option>
+            <option value="manager">Customer Relations Manager</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-accent">Add user</button>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.name }}</td>
+            <td>{{ u.username }}</td>
+            <td><span class="stage-pill {{ 'stage-Converted' if u.role == 'manager' else 'stage-Contacted' }}">{{ 'Manager' if u.role == 'manager' else 'Telecaller' }}</span></td>
+            <td>
+              <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" onsubmit="return confirm('Remove this user? Their leads stay, just unassigned.')">
+                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

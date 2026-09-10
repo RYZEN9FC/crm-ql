@@ -1,6 +1,10 @@
 import sqlite3
 import csv
 import io
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import json
 from functools import wraps
 from datetime import datetime, date, timedelta
@@ -44,7 +48,12 @@ BUDGET_RANGES = ["Under 25k", "25k-50k", "50k-1L", "1L-2L", "2L-5L", "5L+"]
 COMPANY_STATUSES = ["Prospect", "Customer", "Inactive"]
 
 app = Flask(__name__)
-app.secret_key = "telecaller-cms-secret-key"
+app.secret_key = os.environ["SECRET_KEY"]
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 
 def get_db():

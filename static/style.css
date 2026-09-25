@@ -1640,3 +1640,78 @@ html[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: #AEB4C2;
 /* Logo swap: light theme shows the navy wordmark instead of the white one */
 html[data-theme="light"] .company-logo-light { display: block; }
 html[data-theme="light"] .company-logo-dark { display: none; }
+
+/* Field Sales */
+.field-session-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px;
+  margin-bottom: 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.field-session-card.session-active { border-color: #2E9964; box-shadow: inset 4px 0 #2E9964; }
+.field-session-label { color: var(--text); font-weight: 700; margin-bottom: 5px; }
+.field-session-time { color: var(--text); font-size: 1.05rem; font-weight: 600; }
+.visit-filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.visit-filter-row .active { border-color: var(--accent); color: var(--accent); }
+.visit-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(285px, 1fr)); gap: 14px; margin-bottom: 28px; }
+.visit-card {
+  display: block;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform .15s ease, border-color .15s ease;
+}
+.visit-card:hover { transform: translateY(-2px); border-color: var(--text-faint); }
+.visit-card h3 { margin: 14px 0 4px; font-size: 1rem; }
+.visit-card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 7px; align-items: center; }
+.visit-card-meta { color: var(--text-soft); font-size: .84rem; margin-top: 8px; }
+.visit-card-purpose { margin: 12px 0; font-size: .9rem; }
+.visit-badge, .visit-origin {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.visit-origin { background: var(--surface-2); color: var(--text-soft); }
+.visit-origin.executive_initiated { color: #8B5CF6; }
+.visit-badge.scheduled { background: rgba(43,108,176,.15); color: #5EA0E6; }
+.visit-badge.checked_in { background: rgba(245,158,11,.16); color: #F2AE35; }
+.visit-badge.review_pending { background: rgba(139,92,246,.16); color: #A98AF4; }
+.visit-badge.completed, .visit-badge.accepted { background: rgba(46,153,100,.16); color: #4FC489; }
+.visit-badge.needs_correction { background: rgba(227,30,36,.16); color: #F07074; }
+.evidence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.evidence-photo { margin: 0; }
+.evidence-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
+.evidence-photo figcaption { color: var(--text-soft); font-size: .75rem; margin-top: 5px; }
+.camera-capture { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 16px 0; background: var(--surface-2); }
+.camera-capture h3 { margin: 0 0 5px; font-size: .95rem; }
+.camera-capture video, .camera-preview { width: 100%; max-height: 360px; object-fit: contain; border-radius: 10px; background: #090B10; margin: 10px 0; }
+.camera-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.card-absence-fields { padding: 12px; margin-bottom: 16px; border: 1px dashed var(--border); border-radius: 10px; }
+
+html[data-theme="light"] .visit-card,
+html[data-theme="light"] .field-session-card { background: var(--surface); }
+html[data-theme="light"] .camera-capture { background: var(--surface-2); }
+html[data-theme="light"] .visit-badge.scheduled { background: #EAF1FB; color: #2B6CB0; }
+html[data-theme="light"] .visit-badge.checked_in { background: #FFF4E5; color: #B6720B; }
+html[data-theme="light"] .visit-badge.review_pending { background: #EEEBFB; color: #5B3FBF; }
+html[data-theme="light"] .visit-badge.completed,
+html[data-theme="light"] .visit-badge.accepted { background: #E9F7EF; color: #2E9964; }
+html[data-theme="light"] .visit-badge.needs_correction { background: #FDEBEC; color: #B8181D; }
+
+@media (max-width: 640px) {
+  .field-session-card { align-items: stretch; flex-direction: column; }
+  .field-session-card .btn { width: 100%; }
+  .visit-card-grid { grid-template-columns: 1fr; }
+}

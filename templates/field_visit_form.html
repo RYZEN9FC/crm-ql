@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Assign' if current_user.role == 'manager' else 'Start' }} Field Visit · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{{ 'Assign a field visit' if current_user.role == 'manager' else 'Independent field visit' }}</h1>
+    <p class="page-sub">{{ 'Schedule an instruction for an executive.' if current_user.role == 'manager' else 'Select an existing CRM record, or create a lead first to avoid duplicates.' }}</p>
+  </div>
+  <a class="btn btn-outline" href="{{ url_for('field_visits') }}">Back</a>
+</div>
+
+{% if current_user.role == 'field_sales' %}
+<div class="edit-hint">Can't find the company or contact? <a href="{{ url_for('add_lead', next='field_visit') }}">Create a lead with duplicate checking</a>, then this visit form will reopen.</div>
+{% endif %}
+
+<form class="form-card form-card-wide" method="post">
+  {% if current_user.role == 'manager' %}
+  <div class="form-group">
+    <label>Field Sales Executive *</label>
+    <select name="assigned_to" required>
+      <option value="">Choose executive…</option>
+      {% for executive in executives %}<option value="{{ executive.id }}">{{ executive.name }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+
+  <h2 class="section-title">CRM record</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Existing lead</label>
+      <select name="lead_id" id="visitLead">
+        <option value="">No lead selected</option>
+        {% for lead in leads %}
+        <option value="{{ lead.id }}" data-company="{{ lead.company_id or '' }}" data-address="{{ lead.address or lead.billing_address or '' }}" data-contact="{{ lead.name }}" {% if selected_lead|string == lead.id|string %}selected{% endif %}>{{ lead.name }}{% if lead.company_name %} · {{ lead.company_name }}{% endif %} · {{ lead.phone }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Existing company</label>
+      <select name="company_id" id="visitCompany">
+        <option value="">No company selected</option>
+        {% for company in companies %}
+        <option value="{{ company.id }}" data-address="{{ company.address or company.billing_address or '' }}{% if company.city %}, {{ company.city }}{% endif %}{% if company.state %}, {{ company.state }}{% endif %}" {% if selected_company|string == company.id|string %}selected{% endif %}>{{ company.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group"><label>Visit date *</label><input type="date" name="scheduled_date" value="{{ today }}" required></div>
+    <div class="form-group"><label>Visit time *</label><input type="time" name="scheduled_time" value="{{ now_time }}" required></div>
+  </div>
+  <div class="form-group"><label>Location / office address *</label><textarea name="location_address" id="visitAddress" required></textarea></div>
+  <div class="form-group"><label>Contact person</label><input name="contact_person" id="visitContact" placeholder="Person expected at the office"></div>
+  <div class="form-group"><label>Purpose *</label><textarea name="purpose" required placeholder="What should this visit accomplish?"></textarea></div>
+  <button class="btn btn-accent">{{ 'Assign visit' if current_user.role == 'manager' else 'Create visit' }}</button>
+</form>
+
+<script>
+const leadSelect = document.getElementById('visitLead');
+const companySelect = document.getElementById('visitCompany');
+const address = document.getElementById('visitAddress');
+const contact = document.getElementById('visitContact');
+function applyLead() {
+  const option = leadSelect.options[leadSelect.selectedIndex];
+  if (!option || !option.value) return;
+  if (option.dataset.company) companySelect.value = option.dataset.company;
+  if (!address.value) address.value = option.dataset.address || '';
+  if (!contact.value) contact.value = option.dataset.contact || '';
+}
+function applyCompany() {
+  const option = companySelect.options[companySelect.selectedIndex];
+  if (option && option.value && !address.value) address.value = option.dataset.address || '';
+}
+leadSelect.addEventListener('change', applyLead);
+companySelect.addEventListener('change', applyCompany);
+applyLead(); applyCompany();
+</script>
+{% endblock %}

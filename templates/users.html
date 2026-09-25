@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Users</h1>
-    <p class="page-sub">Telecallers and Customer Relations Managers who can log in.</p>
+    <p class="page-sub">Telecallers, Field Sales Executives and Customer Relations Managers who can log in.</p>
   </div>
 </div>
 
@@ -29,6 +29,7 @@
           <label>Role</label>
           <select name="role">
             <option value="telecaller">Telecaller</option>
+            <option value="field_sales">Field Sales Executive</option>
             <option value="manager">Customer Relations Manager</option>
           </select>
         </div>
@@ -48,7 +49,7 @@
           <tr>
             <td>{{ u.name }}</td>
             <td>{{ u.username }}</td>
-            <td><span class="stage-pill {{ 'stage-Converted' if u.role == 'manager' else 'stage-Contacted' }}">{{ 'Manager' if u.role == 'manager' else 'Telecaller' }}</span></td>
+            <td><span class="stage-pill {{ 'stage-Converted' if u.role == 'manager' else ('stage-Interested' if u.role == 'field_sales' else 'stage-Contacted') }}">{{ 'Manager' if u.role == 'manager' else ('Field Sales' if u.role == 'field_sales' else 'Telecaller') }}</span></td>
             <td>
               <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" onsubmit="return confirm('Remove this user? Their leads stay, just unassigned.')">
                 <button type="submit" class="btn btn-danger btn-sm">Remove</button>

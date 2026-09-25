@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Field Visit #{{ visit.id }} · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{{ visit.company_name or visit.lead_name or 'Field visit' }}</h1>
+    <p class="page-sub">
+      <span class="visit-badge {{ visit.status }}">{{ visit.status.replace('_',' ').title() }}</span>
+      <span class="visit-origin {{ visit.origin }}">{{ 'Manager-assigned' if visit.origin == 'manager_assigned' else 'Executive-initiated' }}</span>
+    </p>
+  </div>
+  <a class="btn btn-outline" href="{{ url_for('field_visits') }}">Back</a>
+</div>
+
+{% if visit.review_status == 'returned' %}
+<div class="flash flash-error"><strong>Returned for correction:</strong> {{ visit.review_comment }}</div>
+{% elif visit.review_status == 'accepted' %}
+<div class="flash flash-success">Accepted by manager{% if visit.reviewed_at %} on {{ visit.reviewed_at }}{% endif %}.</div>
+{% endif %}
+
+<div class="detail-grid">
+  <div>
+    <div class="card">
+      <h2 class="section-title">Visit instruction</h2>
+      <div class="lead-meta-row"><span class="k">Executive</span><span class="v">{{ visit.executive_name or 'Unassigned' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Created by</span><span class="v">{{ visit.creator_name or 'Former user' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Schedule</span><span class="v">{{ visit.scheduled_date }} · {{ visit.scheduled_time or 'Time not set' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Address</span><span class="v">{{ visit.location_address }}</span></div>
+      <div class="lead-meta-row"><span class="k">Contact</span><span class="v">{{ visit.contact_person or visit.lead_name or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Purpose</span><span class="v">{{ visit.purpose }}</span></div>
+      {% if visit.lead_id %}<a class="btn btn-outline btn-sm" href="{{ url_for('lead_detail', lead_id=visit.lead_id) }}">Open lead</a>{% endif %}
+      {% if visit.company_id %}<a class="btn btn-outline btn-sm" href="{{ url_for('company_detail', company_id=visit.company_id) }}">Open company</a>{% endif %}
+    </div>
+
+    {% if visit.checkin_at %}
+    <div class="card">
+      <h2 class="section-title">Check-in</h2>
+      <div class="lead-meta-row"><span class="k">Time</span><span class="v">{{ visit.checkin_at }}</span></div>
+      <div class="lead-meta-row"><span class="k">Location</span><span class="v">{{ visit.location_status or 'unavailable' }}{% if visit.checkin_lat is not none %} · {{ '%.6f'|format(visit.checkin_lat) }}, {{ '%.6f'|format(visit.checkin_lng) }}{% endif %}{% if visit.checkin_accuracy %} (±{{ visit.checkin_accuracy|round|int }}m){% endif %}</span></div>
+      {% if work_session %}<div class="lead-meta-row"><span class="k">Field session</span><span class="v">{{ work_session.work_date }} · {{ session_duration(work_session.started_at, work_session.ended_at) }}</span></div>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if visit.completed_at %}
+    <div class="card">
+      <h2 class="section-title">Visit report</h2>
+      <div class="lead-meta-row"><span class="k">Completed</span><span class="v">{{ visit.completed_at }}</span></div>
+      <div class="lead-meta-row"><span class="k">People met</span><span class="v">{{ visit.people_met or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Discussion</span><span class="v">{{ visit.discussion or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Outcome</span><span class="v">{{ visit.outcome or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Notes</span><span class="v">{{ visit.notes or '—' }}</span></div>
+      <div class="lead-meta-row"><span class="k">Next action</span><span class="v">{{ visit.next_action or '—' }}{% if visit.follow_up_date %} · {{ visit.follow_up_date }}{% endif %}</span></div>
+      {% if visit.no_card_reason %}<div class="lead-meta-row"><span class="k">No visiting card</span><span class="v">{{ visit.no_card_reason }} · {{ visit.no_card_explanation }}</span></div>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    {% if current_user.role == 'field_sales' and visit.status == 'scheduled' %}
+    <div class="card">
+      <h2 class="section-title">Arrival check-in</h2>
+      <p class="page-sub">Your timestamp is recorded immediately. Location permission is requested and its status is saved even if unavailable.</p>
+      <form method="post" action="{{ url_for('field_visit_checkin', visit_id=visit.id) }}" id="checkinForm">
+        <input type="hidden" name="latitude" id="latitude"><input type="hidden" name="longitude" id="longitude">
+        <input type="hidden" name="accuracy" id="accuracy"><input type="hidden" name="location_status" id="locationStatus" value="unavailable">
+        <button type="button" class="btn btn-accent btn-block" id="checkinButton" {% if not active_session %}disabled{% endif %}>Check in now</button>
+      </form>
+      {% if not active_session %}<div class="edit-hint">Start Field Work from the Field Sales page before checking in.</div>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if photos %}
+    <div class="card">
+      <h2 class="section-title">Camera evidence</h2>
+      <div class="evidence-grid">
+      {% for photo in photos %}
+        <figure class="evidence-photo"><img src="{{ url_for('field_visit_photo', photo_id=photo.id) }}" alt="{{ photo.photo_type.replace('_',' ') }}"><figcaption>{{ photo.photo_type.replace('_',' ').title() }} · {{ photo.captured_at }}</figcaption></figure>
+      {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if current_user.role == 'field_sales' and visit.status in ['checked_in','needs_correction'] %}
+    <form class="card" method="post" action="{{ url_for('field_visit_complete', visit_id=visit.id) }}" id="completeVisitForm">
+      <h2 class="section-title">{{ 'Correct and resubmit' if visit.status == 'needs_correction' else 'Complete visit' }}</h2>
+      <h3>Searchable contact details</h3>
+      <p class="page-sub">These fields update the linked CRM lead/contact. The visiting-card photo is supporting evidence only.</p>
+      <div class="form-group"><label>Contact name *</label><input name="contact_name" value="{{ visit.contact_person or visit.lead_name or '' }}" required></div>
+      <div class="form-group"><label>Designation</label><input name="contact_designation" value="{{ visit.contact_designation or visit.lead_designation or '' }}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Phone</label><input name="contact_phone" value="{{ visit.contact_phone or visit.lead_phone or '' }}"></div>
+        <div class="form-group"><label>Email</label><input type="email" name="contact_email" value="{{ visit.contact_email or visit.lead_email or '' }}"></div>
+      </div>
+      <div class="form-group"><label>People met *</label><input name="people_met" value="{{ visit.people_met or '' }}" required placeholder="Names and designations"></div>
+      <div class="form-group"><label>Discussion *</label><textarea name="discussion" required>{{ visit.discussion or '' }}</textarea></div>
+      <div class="form-group"><label>Outcome *</label><select name="outcome" required><option value="">Choose outcome…</option>{% for o in outcomes %}<option value="{{ o }}" {% if visit.outcome == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Notes</label><textarea name="notes">{{ visit.notes or '' }}</textarea></div>
+      <div class="form-group"><label>Next action</label><input name="next_action" value="{{ visit.next_action or '' }}" placeholder="Call, send proposal, arrange demo…"></div>
+      <div class="form-group"><label>Follow-up date</label><input type="date" name="follow_up_date" value="{{ visit.follow_up_date or '' }}"></div>
+
+      <div class="camera-capture" data-camera="office">
+        <h3>Office photo *</h3>
+        <p class="page-sub">Live camera capture only. A gallery/file picker is not provided.</p>
+        <video playsinline muted></video><canvas hidden></canvas><img class="camera-preview" alt="Office capture preview" hidden>
+        <input type="hidden" name="office_photo_data">
+        <div class="camera-actions"><button type="button" class="btn btn-outline start-camera">Open camera</button><button type="button" class="btn btn-accent take-photo" hidden>Capture office</button></div>
+      </div>
+
+      <div class="camera-capture" data-camera="card">
+        <h3>Visiting-card photo</h3>
+        <p class="page-sub">Capture the card with the camera. Contact fields remain the searchable CRM record.</p>
+        <video playsinline muted></video><canvas hidden></canvas><img class="camera-preview" alt="Visiting card capture preview" hidden>
+        <input type="hidden" name="card_photo_data">
+        <div class="camera-actions"><button type="button" class="btn btn-outline start-camera">Open camera</button><button type="button" class="btn btn-accent take-photo" hidden>Capture card</button></div>
+      </div>
+
+      <div class="card-absence-fields">
+        <div class="form-group"><label>If no card was obtained</label><select name="no_card_reason"><option value="">Choose reason…</option>{% for r in no_card_reasons %}<option value="{{ r }}" {% if visit.no_card_reason == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>Explanation</label><textarea name="no_card_explanation" placeholder="Explain why no card could be captured">{{ visit.no_card_explanation or '' }}</textarea></div>
+      </div>
+      <button class="btn btn-accent btn-block">Submit for manager review</button>
+    </form>
+    {% endif %}
+
+    {% if current_user.role == 'manager' and visit.review_status == 'pending' %}
+    <form class="card" method="post" action="{{ url_for('field_visit_review', visit_id=visit.id) }}">
+      <h2 class="section-title">Manager review</h2>
+      <div class="form-group"><label>Review comment</label><textarea name="review_comment" placeholder="Required when returning for correction"></textarea></div>
+      <div class="header-actions"><button class="btn btn-accent" name="action" value="accept">Accept visit</button><button class="btn btn-danger" name="action" value="return">Return for correction</button></div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const checkinButton = document.getElementById('checkinButton');
+if (checkinButton) {
+  checkinButton.addEventListener('click', () => {
+    checkinButton.disabled = true; checkinButton.textContent = 'Getting location…';
+    const submit = status => { document.getElementById('locationStatus').value = status; document.getElementById('checkinForm').submit(); };
+    if (!navigator.geolocation) return submit('unsupported');
+    navigator.geolocation.getCurrentPosition(pos => {
+      document.getElementById('latitude').value = pos.coords.latitude;
+      document.getElementById('longitude').value = pos.coords.longitude;
+      document.getElementById('accuracy').value = pos.coords.accuracy;
+      submit('captured');
+    }, err => submit(err.code === 1 ? 'denied' : 'unavailable'), {enableHighAccuracy:true, timeout:12000, maximumAge:0});
+  });
+}
+
+let activeStream = null;
+function stopCamera() { if (activeStream) activeStream.getTracks().forEach(track => track.stop()); activeStream = null; }
+document.querySelectorAll('.camera-capture').forEach(box => {
+  const video = box.querySelector('video'), canvas = box.querySelector('canvas'), preview = box.querySelector('.camera-preview');
+  const hidden = box.querySelector('input[type="hidden"]'), start = box.querySelector('.start-camera'), take = box.querySelector('.take-photo');
+  start.addEventListener('click', async () => {
+    stopCamera();
+    try {
+      activeStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+      video.srcObject = activeStream; await video.play(); video.hidden = false; take.hidden = false; start.textContent = 'Restart camera';
+    } catch (error) { alert('Camera access is required. Allow camera permission and use HTTPS or localhost.'); }
+  });
+  take.addEventListener('click', () => {
+    const maxWidth = 1600, scale = Math.min(1, maxWidth / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    hidden.value = canvas.toDataURL('image/jpeg', 0.85); preview.src = hidden.value; preview.hidden = false;
+    video.hidden = true; take.hidden = true; stopCamera(); start.textContent = 'Retake photo';
+  });
+});
+window.addEventListener('beforeunload', stopCamera);
+</script>
+{% endblock %}

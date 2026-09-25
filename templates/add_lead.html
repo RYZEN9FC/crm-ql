@@ -9,6 +9,7 @@
 </div>
 
 <form class="form-card form-card-wide" method="post" action="{{ url_for('add_lead') }}" id="addLeadForm">
+  {% if next_target %}<input type="hidden" name="next_target" value="{{ next_target }}">{% endif %}
 <div class="form-grid-2col">
 <div>
 

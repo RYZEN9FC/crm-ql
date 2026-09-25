@@ -66,6 +66,29 @@
 </div>
 
 {% if team_stats is not none %}
+<h2 class="section-title">Field Sales today</h2>
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-value">{{ field_visit_stats.scheduled_today }}</div><div class="stat-label">Visits scheduled</div></div>
+  <div class="stat-card"><div class="stat-value">{{ field_visit_stats.completed_today }}</div><div class="stat-label">Visits submitted</div></div>
+  <div class="stat-card"><div class="stat-value">{{ field_visit_stats.review_pending }}</div><div class="stat-label">Awaiting review</div></div>
+  <div class="stat-card"><div class="stat-value">{{ field_visit_stats.followups_due }}</div><div class="stat-label">Visit follow-ups due</div></div>
+</div>
+<div class="table-card">
+  <table>
+    <thead><tr><th>Executive</th><th>Started</th><th>Ended</th><th>Visits</th><th>End source</th></tr></thead>
+    <tbody>
+      {% for s in field_session_rows %}<tr><td>{{ s.executive_name or 'Former user' }}</td><td>{{ s.started_at[11:16] }}</td><td>{{ s.ended_at[11:16] if s.ended_at else 'Active' }}</td><td>{{ s.visit_count }}</td><td>{{ 'System-assumed' if s.end_source == 'system_assumed' else ('Executive' if s.end_source else '—') }}</td></tr>
+      {% else %}<tr><td colspan="5"><div class="empty-state">No Field Sales sessions today.</div></td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if field_outcome_stats %}
+<div class="card" style="margin-top:14px">
+  <h3 class="section-title">Visit outcomes this month</h3>
+  <div class="tag-list">{% for row in field_outcome_stats %}<span class="tag">{{ row.outcome }} · {{ row.count }}</span>{% endfor %}</div>
+</div>
+{% endif %}
+
 <h2 class="section-title">Telecaller performance</h2>
 <div class="table-card">
   <table>

@@ -55,6 +55,9 @@
       <a href="{{ url_for('leads_list') }}" class="nav-link {% if request.endpoint in ['leads_list','lead_detail'] %}active{% endif %}">Leads (List)</a>
       <a href="{{ url_for('leads_kanban') }}" class="nav-link {% if request.endpoint == 'leads_kanban' %}active{% endif %}">Leads (Kanban)</a>
       <a href="{{ url_for('contacts_list') }}" class="nav-link {% if request.endpoint in ['contacts_list','company_detail'] %}active{% endif %}">Companies</a>
+      {% if current_user and current_user.role in ['manager','field_sales'] %}
+      <a href="{{ url_for('field_visits') }}" class="nav-link {% if request.endpoint in ['field_visits','field_visit_new','field_visit_detail'] %}active{% endif %}">Field Sales</a>
+      {% endif %}
       {% if current_user and current_user.role == 'manager' %}
       <a href="{{ url_for('invoices_list') }}" class="nav-link {% if request.endpoint in ['invoices_list','invoice_new','invoice_detail'] %}active{% endif %}">Invoices</a>
        <a href="{{ url_for('activity_logs_page') }}" class="nav-link {% if request.endpoint == 'activity_logs_page' %}active{% endif %}">Activity Logs</a>
@@ -67,7 +70,7 @@
     {% if current_user %}
     <div class="user-card">
       <div class="user-card-name">{{ current_user.name }}</div>
-      <div class="user-card-role">{{ 'Customer Relations Manager' if current_user.role == 'manager' else 'Telecaller' }}</div>
+      <div class="user-card-role">{{ 'Customer Relations Manager' if current_user.role == 'manager' else ('Field Sales Executive' if current_user.role == 'field_sales' else 'Telecaller') }}</div>
       <a href="{{ url_for('logout') }}" class="user-card-logout">Log out</a>
     </div>
     {% endif %}

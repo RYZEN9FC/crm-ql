@@ -2,18 +2,31 @@ import sqlite3
 import csv
 import io
 import os
+<<<<<<< HEAD
+=======
+import base64
+import binascii
+import hashlib
+import uuid
+>>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 from dotenv import load_dotenv
 
 load_dotenv()
 import json
 from functools import wraps
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 from flask import Flask, render_template, request, redirect, url_for, flash, g, session, jsonify, Response, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from invoice_pdf import build_invoice_pdf
 
 DB_PATH = "leads.db"
-ROLES = ["telecaller", "manager"]
+ROLES = ["telecaller", "field_sales", "manager"]
+# QuantumLoop operates on India Standard Time. A fixed offset avoids depending on
+# the optional Windows IANA timezone database while remaining exact (IST has no DST).
+APP_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="Asia/Kolkata")
+FIELD_WORK_AUTO_END = time(18, 30)
+NO_CARD_REASONS = ["No card available", "Forgot to ask", "Contact declined", "Other"]
+VISIT_OUTCOMES = ["Interested", "Follow-up Required", "Proposal Requested", "Not Interested", "No Decision", "Contact Unavailable", "Other"]
 
 # ---------- New pipeline ----------
 STAGES = ["New", "Attempted", "Contacted", "Follow Up", "Interested",
@@ -50,9 +63,16 @@ COMPANY_STATUSES = ["Prospect", "Customer", "Inactive"]
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
 app.config.update(
+<<<<<<< HEAD
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+=======
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"},
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    MAX_CONTENT_LENGTH=12 * 1024 * 1024,
+>>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 )
 
 
@@ -309,20 +329,107 @@ def init_db():
         )
     """)
 
+    # Field Sales daily work sessions and visits. Visit assignment is deliberately
+    # separate from lead ownership: telecallers/managers keep CRM responsibility
+    # while an executive receives access to the visit and its related record.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS field_work_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            work_date TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            end_source TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, work_date),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS field_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER,
+            company_id INTEGER,
+            assigned_to INTEGER,
+            created_by INTEGER,
+            origin TEXT NOT NULL,
+            scheduled_date TEXT NOT NULL,
+            scheduled_time TEXT,
+            location_address TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            contact_person TEXT,
+            contact_designation TEXT,
+            contact_phone TEXT,
+            contact_email TEXT,
+            status TEXT NOT NULL DEFAULT 'scheduled',
+            session_id INTEGER,
+            checkin_at TEXT,
+            checkin_lat REAL,
+            checkin_lng REAL,
+            checkin_accuracy REAL,
+            location_status TEXT,
+            completed_at TEXT,
+            people_met TEXT,
+            discussion TEXT,
+            outcome TEXT,
+            notes TEXT,
+            next_action TEXT,
+            follow_up_date TEXT,
+            no_card_reason TEXT,
+            no_card_explanation TEXT,
+            submitted_at TEXT,
+            review_status TEXT,
+            reviewed_by INTEGER,
+            reviewed_at TEXT,
+            review_comment TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+            FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (session_id) REFERENCES field_work_sessions(id) ON DELETE SET NULL,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS field_visit_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visit_id INTEGER NOT NULL,
+            photo_type TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            byte_size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            captured_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (visit_id) REFERENCES field_visits(id) ON DELETE CASCADE
+        )
+    """)
+    _add_cols(db, "field_visits", [
+        ("contact_designation", "TEXT"),
+        ("contact_phone", "TEXT"),
+        ("contact_email", "TEXT"),
+    ])
+    db.execute("CREATE INDEX IF NOT EXISTS idx_field_visits_assignee_date ON field_visits(assigned_to, scheduled_date)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_field_visits_review ON field_visits(review_status)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_field_sessions_user_date ON field_work_sessions(user_id, work_date)")
+
     db.commit()
     db.close()
 
 
 def now_str():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def today_str():
-    return date.today().strftime("%Y-%m-%d")
+    return datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
 
 
 def month_start_str():
-    return date.today().replace(day=1).strftime("%Y-%m-%d")
+    return datetime.now(APP_TIMEZONE).date().replace(day=1).strftime("%Y-%m-%d")
 
 
 def time_ago(ts):
@@ -332,7 +439,7 @@ def time_ago(ts):
         then = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return ts
-    delta = datetime.now() - then
+    delta = datetime.now(APP_TIMEZONE).replace(tzinfo=None) - then
     seconds = delta.total_seconds()
     if seconds < 60:
         return "just now"
@@ -399,12 +506,42 @@ def manager_required(f):
     return wrapper
 
 
+def field_sales_or_manager_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        user = current_user()
+        if not user or user["role"] not in {"manager", "field_sales"}:
+            flash("Only managers and Field Sales Executives can access that.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def _reconcile_field_sessions(db):
+    """Close active sessions at 18:30 local time, even if reconciliation runs later."""
+    local_now = datetime.now(APP_TIMEZONE)
+    rows = db.execute("SELECT * FROM field_work_sessions WHERE status = 'active'").fetchall()
+    changed = False
+    for row in rows:
+        work_day = datetime.strptime(row["work_date"], "%Y-%m-%d").date()
+        cutoff = datetime.combine(work_day, FIELD_WORK_AUTO_END).replace(tzinfo=APP_TIMEZONE)
+        if local_now >= cutoff:
+            db.execute(
+                "UPDATE field_work_sessions SET ended_at=?, end_source='system_assumed', status='closed' WHERE id=?",
+                (cutoff.strftime("%Y-%m-%d %H:%M:%S"), row["id"]),
+            )
+            changed = True
+    if changed:
+        db.commit()
+
+
 @app.before_request
 def require_login():
     open_endpoints = {"login", "setup", "static"}
     if request.endpoint in open_endpoints:
         return
     db = get_db()
+    _reconcile_field_sessions(db)
     has_users = db.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
     if not has_users and request.endpoint != "setup":
         return redirect(url_for("setup"))
@@ -425,11 +562,14 @@ def visible_leads_clause(user):
       telecaller's leads, get shared with another telecaller/manager.
     """
     shared_clause = "leads.id IN (SELECT lead_id FROM lead_shares WHERE user_id = ?)"
+    visit_clause = "leads.id IN (SELECT lead_id FROM field_visits WHERE assigned_to = ?)"
     if user["role"] == "manager":
         return (
-            f"(owner_id = ? OR owner_id IN (SELECT id FROM users WHERE role = 'telecaller') OR {shared_clause})",
+            f"(owner_id = ? OR owner_id IN (SELECT id FROM users WHERE role IN ('telecaller','field_sales')) OR owner_id IS NULL OR {shared_clause})",
             [user["id"], user["id"]],
         )
+    if user["role"] == "field_sales":
+        return f"(owner_id = ? OR {shared_clause} OR {visit_clause})", [user["id"], user["id"], user["id"]]
     return f"(owner_id = ? OR {shared_clause})", [user["id"], user["id"]]
 
 
@@ -557,7 +697,7 @@ def dashboard():
     total_leads = db.execute(f"SELECT COUNT(*) c FROM leads WHERE {clause}", params).fetchone()["c"]
 
     today = today_str()
-    week_ago = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
+    week_ago = (datetime.now(APP_TIMEZONE).date() - timedelta(days=7)).strftime("%Y-%m-%d")
 
     added_today = db.execute(
         f"SELECT COUNT(*) c FROM leads WHERE {clause} AND date(created_at) = ?", [*params, today]
@@ -584,6 +724,9 @@ def dashboard():
 
     team_stats = None
     monthly_stats = None
+    field_visit_stats = None
+    field_session_rows = None
+    field_outcome_stats = None
     if user["role"] == "manager":
         team_stats = []
         telecallers = db.execute("SELECT * FROM users WHERE role = 'telecaller' ORDER BY name").fetchall()
@@ -619,6 +762,38 @@ def dashboard():
             "conversion_rate": round(m_won / m_total * 100, 1) if m_total else 0,
         }
 
+        field_visit_stats = {
+            "scheduled_today": db.execute(
+                "SELECT COUNT(*) c FROM field_visits WHERE scheduled_date=?", (today,)
+            ).fetchone()["c"],
+            "completed_today": db.execute(
+                "SELECT COUNT(*) c FROM field_visits WHERE date(completed_at)=?", (today,)
+            ).fetchone()["c"],
+            "review_pending": db.execute(
+                "SELECT COUNT(*) c FROM field_visits WHERE review_status='pending'"
+            ).fetchone()["c"],
+            "followups_due": db.execute(
+                "SELECT COUNT(*) c FROM field_visits WHERE follow_up_date<=? AND follow_up_date!='' AND review_status='accepted'",
+                (today,),
+            ).fetchone()["c"],
+        }
+        field_session_rows = db.execute(
+            """SELECT s.*, users.name AS executive_name,
+                      COUNT(v.id) AS visit_count
+               FROM field_work_sessions s
+               LEFT JOIN users ON users.id=s.user_id
+               LEFT JOIN field_visits v ON v.session_id=s.id
+               WHERE s.work_date=?
+               GROUP BY s.id ORDER BY s.started_at DESC""",
+            (today,),
+        ).fetchall()
+        field_outcome_stats = db.execute(
+            """SELECT outcome,COUNT(*) AS count FROM field_visits
+               WHERE outcome IS NOT NULL AND outcome!='' AND date(completed_at)>=?
+               GROUP BY outcome ORDER BY count DESC,outcome""",
+            (m_start,),
+        ).fetchall()
+
     return render_template(
         "dashboard.html",
         stage_counts=stage_counts,
@@ -631,6 +806,9 @@ def dashboard():
         followups_overdue=followups_overdue,
         team_stats=team_stats,
         monthly_stats=monthly_stats,
+        field_visit_stats=field_visit_stats,
+        field_session_rows=field_session_rows,
+        field_outcome_stats=field_outcome_stats,
     )
 
 
@@ -771,6 +949,7 @@ def add_lead():
     if request.method == "POST":
         user = current_user()
         f = request.form
+        next_target = f.get("next_target", "").strip()
 
         company_id = f.get("company_id", "").strip()
         company_name = f.get("company_name", "").strip()
@@ -795,12 +974,21 @@ def add_lead():
             if gbp_link and not company["gbp_link"]:
                 db.execute("UPDATE companies SET gbp_link = ? WHERE id = ?", (gbp_link, company_id))
         else:
-            cur = db.execute(
-                "INSERT INTO companies (name, industry, gbp_link, status, account_owner_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-                (company_name, f.get("industry", "").strip(), gbp_link, "Prospect", user["id"], now_str(), now_str()),
-            )
-            company_id = cur.lastrowid
-            log_activity("Company Created", "company", company_id, company_name)
+            company = db.execute(
+                "SELECT * FROM companies WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) LIMIT 1", (company_name,)
+            ).fetchone()
+            if company:
+                company_id = company["id"]
+                company_name = company["name"]
+                if gbp_link and not company["gbp_link"]:
+                    db.execute("UPDATE companies SET gbp_link=? WHERE id=?", (gbp_link, company_id))
+            else:
+                cur = db.execute(
+                    "INSERT INTO companies (name, industry, gbp_link, status, account_owner_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+                    (company_name, f.get("industry", "").strip(), gbp_link, "Prospect", user["id"], now_str(), now_str()),
+                )
+                company_id = cur.lastrowid
+                log_activity("Company Created", "company", company_id, company_name)
 
         # Contact: reuse or create
         contact_phone = f.get("phone", "").strip()
@@ -819,12 +1007,41 @@ def add_lead():
             contact_email = contact_email or contact["email"]
             designation = designation or contact["designation"]
         else:
-            cur = db.execute(
-                "INSERT INTO contacts (company_id, name, designation, phone, alternate_phone, email, is_primary, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (company_id, contact_name, designation, contact_phone, contact_alt_phone, contact_email, 0, now_str()),
-            )
-            contact_id = cur.lastrowid
-            log_activity("Contact Created", "contact", contact_id, contact_name)
+            contact = db.execute(
+                """SELECT * FROM contacts WHERE company_id=? AND
+                   (LOWER(TRIM(name))=LOWER(TRIM(?)) OR (?!='' AND phone=?) OR (?!='' AND LOWER(email)=LOWER(?)))
+                   ORDER BY is_primary DESC LIMIT 1""",
+                (company_id, contact_name, contact_phone, contact_phone, contact_email, contact_email),
+            ).fetchone()
+            if contact:
+                contact_id = contact["id"]
+                contact_name = contact["name"]
+                contact_phone = contact_phone or contact["phone"]
+                contact_email = contact_email or contact["email"]
+                designation = designation or contact["designation"]
+                db.execute(
+                    "UPDATE contacts SET designation=?,phone=?,alternate_phone=?,email=?,updated_at=? WHERE id=?",
+                    (designation, contact_phone, contact_alt_phone or contact["alternate_phone"], contact_email, now_str(), contact_id),
+                )
+            else:
+                cur = db.execute(
+                    "INSERT INTO contacts (company_id, name, designation, phone, alternate_phone, email, is_primary, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                    (company_id, contact_name, designation, contact_phone, contact_alt_phone, contact_email, 0, now_str()),
+                )
+                contact_id = cur.lastrowid
+                log_activity("Contact Created", "contact", contact_id, contact_name)
+
+        existing_lead = db.execute(
+            """SELECT id,name FROM leads WHERE company_id=? AND
+               (contact_id=? OR (?!='' AND phone=?)) ORDER BY id DESC LIMIT 1""",
+            (company_id, contact_id, contact_phone, contact_phone),
+        ).fetchone()
+        if existing_lead:
+            db.commit()
+            flash(f"An existing lead for '{existing_lead['name']}' was reused to avoid a duplicate.", "success")
+            if next_target == "field_visit" and user["role"] == "field_sales":
+                return redirect(url_for("field_visit_new", lead_id=existing_lead["id"]))
+            return redirect(url_for("lead_detail", lead_id=existing_lead["id"]))
 
         services = f.getlist("services_required")
         other_service = f.get("other_service_description", "").strip() if "Other" in services else ""
@@ -855,6 +1072,8 @@ def add_lead():
         log_lead_event(lead_id, "Lead Created")
         log_activity("Lead Created", "lead", lead_id, contact_name, f"Company: {company_name or company_id}")
         flash(f"Lead for '{contact_name}' added.", "success")
+        if next_target == "field_visit" and user["role"] == "field_sales":
+            return redirect(url_for("field_visit_new", lead_id=lead_id))
         return redirect(url_for("lead_detail", lead_id=lead_id))
 
     companies = db.execute("SELECT id, name FROM companies ORDER BY name").fetchall()
@@ -864,6 +1083,7 @@ def add_lead():
         google_presence_opts=GOOGLE_PRESENCE, social_presence_opts=SOCIAL_PRESENCE,
         decision_maker_opts=DECISION_MAKER_OPTIONS, interest_levels=INTEREST_LEVELS,
         priorities=PRIORITIES, budget_ranges=BUDGET_RANGES,
+        next_target=request.args.get("next", ""),
     )
 
 
@@ -1654,6 +1874,479 @@ def activity_logs_page():
         "activity_logs.html", logs=logs, users=users, actions=actions,
         user_filter=user_filter, action_filter=action_filter, date_filter=date_filter,
     )
+
+
+# ---------- Field Sales ----------
+
+def _active_field_session(db, user_id):
+    _reconcile_field_sessions(db)
+    return db.execute(
+        "SELECT * FROM field_work_sessions WHERE user_id=? AND work_date=? AND status='active'",
+        (user_id, today_str()),
+    ).fetchone()
+
+
+def _session_duration(started_at, ended_at=None):
+    if not started_at:
+        return "—"
+    start = datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
+    end = datetime.strptime(ended_at, "%Y-%m-%d %H:%M:%S") if ended_at else datetime.now(APP_TIMEZONE).replace(tzinfo=None)
+    total_minutes = max(0, int((end - start).total_seconds() // 60))
+    return f"{total_minutes // 60}h {total_minutes % 60}m"
+
+
+def _get_field_visit(db, visit_id):
+    return db.execute(
+        """SELECT v.*, leads.name AS lead_name, leads.phone AS lead_phone,
+                  leads.email AS lead_email, leads.designation AS lead_designation, leads.contact_id AS lead_contact_id,
+                  companies.name AS company_name, users.name AS executive_name,
+                  creators.name AS creator_name
+           FROM field_visits v
+           LEFT JOIN leads ON leads.id=v.lead_id
+           LEFT JOIN companies ON companies.id=v.company_id
+           LEFT JOIN users ON users.id=v.assigned_to
+           LEFT JOIN users creators ON creators.id=v.created_by
+           WHERE v.id=?""",
+        (visit_id,),
+    ).fetchone()
+
+
+def _can_access_field_visit(user, visit):
+    return bool(visit and (user["role"] == "manager" or visit["assigned_to"] == user["id"]))
+
+
+def _log_field_visit_event(visit, event, detail=""):
+    if visit["lead_id"]:
+        log_lead_event(visit["lead_id"], event, detail)
+    if visit["company_id"]:
+        log_activity(event, "company", visit["company_id"], visit["company_name"] or "", detail)
+    log_activity(event, "field_visit", visit["id"], visit["company_name"] or visit["lead_name"] or f"Visit {visit['id']}", detail)
+
+
+def _photo_exists(db, visit_id, photo_type):
+    return db.execute(
+        "SELECT 1 FROM field_visit_photos WHERE visit_id=? AND photo_type=? LIMIT 1",
+        (visit_id, photo_type),
+    ).fetchone() is not None
+
+
+def _field_photo_dir():
+    return os.environ.get("FIELD_PHOTO_DIR", "").strip() or os.path.join(app.instance_path, "field_visit_photos")
+
+
+def _save_camera_photo(db, visit_id, photo_type, data_url):
+    if not data_url:
+        return None
+    prefix = "data:image/jpeg;base64,"
+    if not data_url.startswith(prefix):
+        raise ValueError("Camera evidence must be a JPEG captured by the visit form.")
+    try:
+        raw = base64.b64decode(data_url[len(prefix):], validate=True)
+    except (ValueError, binascii.Error):
+        raise ValueError("The captured camera image could not be read.")
+    if len(raw) > 8 * 1024 * 1024:
+        raise ValueError("The captured image is larger than 8 MB.")
+    if len(raw) < 4 or not raw.startswith(b"\xff\xd8\xff"):
+        raise ValueError("The captured evidence is not a valid JPEG image.")
+
+    upload_dir = _field_photo_dir()
+    os.makedirs(upload_dir, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}.jpg"
+    with open(os.path.join(upload_dir, stored_name), "wb") as output:
+        output.write(raw)
+    db.execute(
+        """INSERT INTO field_visit_photos
+           (visit_id,photo_type,stored_name,mime_type,byte_size,sha256,captured_at,created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (visit_id, photo_type, stored_name, "image/jpeg", len(raw), hashlib.sha256(raw).hexdigest(), now_str(), now_str()),
+    )
+    return stored_name
+
+
+@app.route("/field-visits")
+@field_sales_or_manager_required
+def field_visits():
+    db = get_db()
+    user = current_user()
+    session_filter = request.args.get("session", "").strip()
+    query = """SELECT v.*, leads.name AS lead_name, companies.name AS company_name,
+                      users.name AS executive_name
+               FROM field_visits v
+               LEFT JOIN leads ON leads.id=v.lead_id
+               LEFT JOIN companies ON companies.id=v.company_id
+               LEFT JOIN users ON users.id=v.assigned_to"""
+    params = []
+    if user["role"] == "field_sales":
+        query += " WHERE v.assigned_to=?"
+        params.append(user["id"])
+    elif session_filter:
+        query += " WHERE v.session_id=?"
+        params.append(session_filter)
+    query += " ORDER BY v.scheduled_date DESC, v.scheduled_time DESC, v.id DESC"
+    visits = db.execute(query, params).fetchall()
+
+    session_today = None
+    sessions = []
+    if user["role"] == "field_sales":
+        session_today = db.execute(
+            "SELECT * FROM field_work_sessions WHERE user_id=? AND work_date=?", (user["id"], today_str())
+        ).fetchone()
+    else:
+        sessions = db.execute(
+            """SELECT s.*, users.name AS executive_name, COUNT(v.id) AS visit_count
+               FROM field_work_sessions s
+               LEFT JOIN users ON users.id=s.user_id
+               LEFT JOIN field_visits v ON v.session_id=s.id
+               GROUP BY s.id ORDER BY s.work_date DESC, s.started_at DESC LIMIT 100"""
+        ).fetchall()
+    return render_template(
+        "field_visits.html", visits=visits, session_today=session_today, sessions=sessions,
+        session_duration=_session_duration, today=today_str(), session_filter=session_filter,
+    )
+
+
+@app.route("/field-work/start", methods=["POST"])
+@field_sales_or_manager_required
+def field_work_start():
+    user = current_user()
+    if user["role"] != "field_sales":
+        flash("Only a Field Sales Executive can start field work.", "error")
+        return redirect(url_for("field_visits"))
+    db = get_db()
+    existing = db.execute(
+        "SELECT * FROM field_work_sessions WHERE user_id=? AND work_date=?", (user["id"], today_str())
+    ).fetchone()
+    if existing:
+        flash("Today's field-work session has already been started.", "error")
+        return redirect(url_for("field_visits"))
+    if datetime.now(APP_TIMEZONE).time() >= FIELD_WORK_AUTO_END:
+        flash("A field-work session cannot be started after the 6:30 p.m. automatic close time.", "error")
+        return redirect(url_for("field_visits"))
+    db.execute(
+        "INSERT INTO field_work_sessions (user_id,work_date,started_at,status,created_at) VALUES (?,?,?,?,?)",
+        (user["id"], today_str(), now_str(), "active", now_str()),
+    )
+    db.commit()
+    log_activity("Field Work Started", "field_session", None, user["name"], today_str())
+    flash("Field work started. Check in when you arrive at your first visit.", "success")
+    return redirect(url_for("field_visits"))
+
+
+@app.route("/field-work/end", methods=["POST"])
+@field_sales_or_manager_required
+def field_work_end():
+    user = current_user()
+    if user["role"] != "field_sales":
+        flash("Only a Field Sales Executive can end field work.", "error")
+        return redirect(url_for("field_visits"))
+    db = get_db()
+    work_session = _active_field_session(db, user["id"])
+    if not work_session:
+        flash("There is no active field-work session.", "error")
+        return redirect(url_for("field_visits"))
+    open_visit = db.execute(
+        "SELECT id FROM field_visits WHERE session_id=? AND status='checked_in'", (work_session["id"],)
+    ).fetchone()
+    if open_visit:
+        flash("Complete your checked-in visit before ending field work.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=open_visit["id"]))
+    db.execute(
+        "UPDATE field_work_sessions SET ended_at=?,end_source='executive',status='closed' WHERE id=?",
+        (now_str(), work_session["id"]),
+    )
+    db.commit()
+    log_activity("Field Work Ended", "field_session", work_session["id"], user["name"], today_str())
+    flash("Field work ended for today.", "success")
+    return redirect(url_for("field_visits"))
+
+
+@app.route("/field-visits/new", methods=["GET", "POST"])
+@field_sales_or_manager_required
+def field_visit_new():
+    db = get_db()
+    user = current_user()
+    if request.method == "POST":
+        f = request.form
+        if user["role"] == "manager":
+            assigned_to = f.get("assigned_to", "").strip()
+            executive = db.execute("SELECT * FROM users WHERE id=? AND role='field_sales'", (assigned_to,)).fetchone()
+            if not executive:
+                flash("Choose a valid Field Sales Executive.", "error")
+                return redirect(url_for("field_visit_new"))
+            origin = "manager_assigned"
+        else:
+            if not _active_field_session(db, user["id"]):
+                flash("Start Field Work before creating an independent visit.", "error")
+                return redirect(url_for("field_visits"))
+            assigned_to = user["id"]
+            origin = "executive_initiated"
+
+        lead_id = f.get("lead_id", "").strip() or None
+        company_id = f.get("company_id", "").strip() or None
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone() if lead_id else None
+        if lead_id and not lead:
+            flash("The selected lead was not found.", "error")
+            return redirect(url_for("field_visit_new"))
+        if lead and lead["company_id"]:
+            company_id = lead["company_id"]
+        company = db.execute("SELECT * FROM companies WHERE id=?", (company_id,)).fetchone() if company_id else None
+        if not lead and not company:
+            flash("Select an existing lead or company.", "error")
+            return redirect(url_for("field_visit_new"))
+
+        scheduled_date = f.get("scheduled_date", "").strip() or today_str()
+        scheduled_time = f.get("scheduled_time", "").strip() or datetime.now(APP_TIMEZONE).strftime("%H:%M")
+        address = f.get("location_address", "").strip()
+        purpose = f.get("purpose", "").strip()
+        if not address or not purpose:
+            flash("Visit location and purpose are required.", "error")
+            return redirect(url_for("field_visit_new", lead_id=lead_id or "", company_id=company_id or ""))
+
+        cur = db.execute(
+            """INSERT INTO field_visits
+               (lead_id,company_id,assigned_to,created_by,origin,scheduled_date,scheduled_time,
+                location_address,purpose,contact_person,status,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (lead_id, company_id, assigned_to, user["id"], origin, scheduled_date, scheduled_time,
+             address, purpose, f.get("contact_person", "").strip(), "scheduled", now_str(), now_str()),
+        )
+        db.commit()
+        visit = _get_field_visit(db, cur.lastrowid)
+        _log_field_visit_event(visit, "Field Visit Created", f"{origin.replace('_', ' ').title()} · {scheduled_date} {scheduled_time}")
+        flash("Field visit created.", "success")
+        return redirect(url_for("field_visit_detail", visit_id=visit["id"]))
+
+    executives = db.execute("SELECT id,name FROM users WHERE role='field_sales' ORDER BY name").fetchall()
+    leads = db.execute(
+        """SELECT leads.id,leads.name,leads.phone,leads.company_id,companies.name AS company_name,
+                  companies.address,companies.billing_address
+           FROM leads LEFT JOIN companies ON companies.id=leads.company_id
+           ORDER BY leads.created_at DESC"""
+    ).fetchall()
+    companies = db.execute(
+        "SELECT id,name,address,billing_address,city,state FROM companies ORDER BY name"
+    ).fetchall()
+    return render_template(
+        "field_visit_form.html", executives=executives, leads=leads, companies=companies,
+        selected_lead=request.args.get("lead_id", ""), selected_company=request.args.get("company_id", ""),
+        now_time=datetime.now(APP_TIMEZONE).strftime("%H:%M"),
+    )
+
+
+@app.route("/field-visits/<int:visit_id>")
+@field_sales_or_manager_required
+def field_visit_detail(visit_id):
+    db = get_db()
+    user = current_user()
+    visit = _get_field_visit(db, visit_id)
+    if not _can_access_field_visit(user, visit):
+        flash("Visit not found or not available to your account.", "error")
+        return redirect(url_for("field_visits"))
+    photos = db.execute(
+        "SELECT * FROM field_visit_photos WHERE visit_id=? ORDER BY id", (visit_id,)
+    ).fetchall()
+    work_session = db.execute(
+        "SELECT * FROM field_work_sessions WHERE id=?", (visit["session_id"],)
+    ).fetchone() if visit["session_id"] else None
+    active_session = _active_field_session(db, user["id"]) if user["role"] == "field_sales" else None
+    return render_template(
+        "field_visit_detail.html", visit=visit, photos=photos, work_session=work_session,
+        active_session=active_session, outcomes=VISIT_OUTCOMES, no_card_reasons=NO_CARD_REASONS,
+        session_duration=_session_duration,
+    )
+
+
+@app.route("/field-visits/<int:visit_id>/check-in", methods=["POST"])
+@field_sales_or_manager_required
+def field_visit_checkin(visit_id):
+    db = get_db()
+    user = current_user()
+    visit = _get_field_visit(db, visit_id)
+    if not visit or user["role"] != "field_sales" or visit["assigned_to"] != user["id"]:
+        flash("Only the assigned executive can check in.", "error")
+        return redirect(url_for("field_visits"))
+    if visit["status"] != "scheduled":
+        flash("This visit cannot be checked in again.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+    work_session = _active_field_session(db, user["id"])
+    if not work_session:
+        flash("Start Field Work before checking in.", "error")
+        return redirect(url_for("field_visits"))
+
+    location_status = request.form.get("location_status", "unavailable")
+    allowed_statuses = {"captured", "denied", "unavailable", "unsupported", "error"}
+    if location_status not in allowed_statuses:
+        location_status = "error"
+    def optional_float(name):
+        try:
+            return float(request.form.get(name))
+        except (TypeError, ValueError):
+            return None
+    lat = optional_float("latitude")
+    lng = optional_float("longitude")
+    accuracy = optional_float("accuracy")
+    if location_status == "captured" and (lat is None or lng is None):
+        location_status = "error"
+
+    db.execute(
+        """UPDATE field_visits SET status='checked_in',session_id=?,checkin_at=?,checkin_lat=?,checkin_lng=?,
+           checkin_accuracy=?,location_status=?,updated_at=? WHERE id=?""",
+        (work_session["id"], now_str(), lat, lng, accuracy, location_status, now_str(), visit_id),
+    )
+    db.commit()
+    visit = _get_field_visit(db, visit_id)
+    _log_field_visit_event(visit, "Field Visit Check-in", f"Location: {location_status}")
+    flash("Checked in. Complete the visit before ending field work.", "success")
+    return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+
+@app.route("/field-visits/<int:visit_id>/complete", methods=["POST"])
+@field_sales_or_manager_required
+def field_visit_complete(visit_id):
+    db = get_db()
+    user = current_user()
+    visit = _get_field_visit(db, visit_id)
+    if not visit or user["role"] != "field_sales" or visit["assigned_to"] != user["id"]:
+        flash("Only the assigned executive can complete this visit.", "error")
+        return redirect(url_for("field_visits"))
+    if visit["status"] not in {"checked_in", "needs_correction"}:
+        flash("Check in before completing this visit.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+    if visit["status"] == "checked_in":
+        active_session = _active_field_session(db, user["id"])
+        if not active_session or active_session["id"] != visit["session_id"]:
+            flash("The field-work session used for this check-in is no longer active.", "error")
+            return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+    f = request.form
+    people_met = f.get("people_met", "").strip()
+    discussion = f.get("discussion", "").strip()
+    outcome = f.get("outcome", "").strip()
+    contact_name = f.get("contact_name", "").strip()
+    contact_designation = f.get("contact_designation", "").strip()
+    contact_phone = f.get("contact_phone", "").strip()
+    contact_email = f.get("contact_email", "").strip()
+    if not people_met or not discussion or not outcome or not contact_name:
+        flash("Contact name, people met, discussion, and visit outcome are required.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+    office_data = f.get("office_photo_data", "")
+    card_data = f.get("card_photo_data", "")
+    has_office = bool(office_data) or _photo_exists(db, visit_id, "office")
+    has_card = bool(card_data) or _photo_exists(db, visit_id, "visiting_card")
+    no_card_reason = f.get("no_card_reason", "").strip()
+    no_card_explanation = f.get("no_card_explanation", "").strip()
+    if not has_office:
+        flash("Capture an office photo with the camera before completing the visit.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+    if not has_card and (no_card_reason not in NO_CARD_REASONS or not no_card_explanation):
+        flash("Capture the visiting card, or choose a reason and enter an explanation.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+    try:
+        if office_data:
+            _save_camera_photo(db, visit_id, "office", office_data)
+        if card_data:
+            _save_camera_photo(db, visit_id, "visiting_card", card_data)
+            no_card_reason = ""
+            no_card_explanation = ""
+    except ValueError as exc:
+        db.rollback()
+        flash(str(exc), "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+    completed_at = visit["completed_at"] or now_str()
+    follow_up_date = f.get("follow_up_date", "").strip()
+    db.execute(
+        """UPDATE field_visits SET status='review_pending',completed_at=?,contact_person=?,contact_designation=?,contact_phone=?,contact_email=?,
+           people_met=?,discussion=?,outcome=?,notes=?,
+           next_action=?,follow_up_date=?,no_card_reason=?,no_card_explanation=?,submitted_at=?,review_status='pending',
+           reviewed_by=NULL,reviewed_at=NULL,updated_at=? WHERE id=?""",
+        (completed_at, contact_name, contact_designation, contact_phone, contact_email,
+         people_met, discussion, outcome, f.get("notes", "").strip(),
+         f.get("next_action", "").strip(), follow_up_date, no_card_reason, no_card_explanation,
+         now_str(), now_str(), visit_id),
+    )
+    if visit["lead_id"]:
+        db.execute(
+            """UPDATE leads SET name=?,designation=?,phone=?,email=?,
+               follow_up_date=CASE WHEN ?!='' THEN ? ELSE follow_up_date END,updated_at=? WHERE id=?""",
+            (contact_name, contact_designation, contact_phone, contact_email,
+             follow_up_date, follow_up_date, now_str(), visit["lead_id"]),
+        )
+        if visit["lead_contact_id"]:
+            db.execute(
+                "UPDATE contacts SET name=?,designation=?,phone=?,email=?,updated_at=? WHERE id=?",
+                (contact_name, contact_designation, contact_phone, contact_email, now_str(), visit["lead_contact_id"]),
+            )
+    elif visit["company_id"]:
+        existing_contact = db.execute(
+            "SELECT id FROM contacts WHERE company_id=? AND LOWER(name)=LOWER(?) LIMIT 1",
+            (visit["company_id"], contact_name),
+        ).fetchone()
+        if existing_contact:
+            db.execute(
+                """UPDATE contacts SET designation=?,
+                   phone=CASE WHEN ?!='' THEN ? ELSE phone END,
+                   email=CASE WHEN ?!='' THEN ? ELSE email END,updated_at=? WHERE id=?""",
+                (contact_designation, contact_phone, contact_phone, contact_email, contact_email, now_str(), existing_contact["id"]),
+            )
+        else:
+            db.execute(
+                """INSERT INTO contacts (company_id,name,designation,phone,email,is_primary,created_at,updated_at)
+                   VALUES (?,?,?,?,?,0,?,?)""",
+                (visit["company_id"], contact_name, contact_designation, contact_phone, contact_email, now_str(), now_str()),
+            )
+    db.commit()
+    visit = _get_field_visit(db, visit_id)
+    _log_field_visit_event(visit, "Field Visit Submitted", f"Outcome: {outcome}" + (f" · Next: {f.get('next_action', '').strip()}" if f.get("next_action", "").strip() else ""))
+    flash("Visit submitted for manager review.", "success")
+    return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+
+@app.route("/field-visits/<int:visit_id>/review", methods=["POST"])
+@manager_required
+def field_visit_review(visit_id):
+    db = get_db()
+    visit = _get_field_visit(db, visit_id)
+    if not visit or visit["review_status"] != "pending":
+        flash("This visit is not waiting for review.", "error")
+        return redirect(url_for("field_visits"))
+    action = request.form.get("action")
+    comment = request.form.get("review_comment", "").strip()
+    if action == "return" and not comment:
+        flash("Enter a correction comment before returning the visit.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+    if action not in {"accept", "return"}:
+        flash("Choose Accept or Return for correction.", "error")
+        return redirect(url_for("field_visit_detail", visit_id=visit_id))
+    status = "completed" if action == "accept" else "needs_correction"
+    review_status = "accepted" if action == "accept" else "returned"
+    db.execute(
+        """UPDATE field_visits SET status=?,review_status=?,reviewed_by=?,reviewed_at=?,review_comment=?,updated_at=?
+           WHERE id=?""",
+        (status, review_status, current_user()["id"], now_str(), comment, now_str(), visit_id),
+    )
+    db.commit()
+    visit = _get_field_visit(db, visit_id)
+    event = "Field Visit Accepted" if action == "accept" else "Field Visit Returned"
+    _log_field_visit_event(visit, event, comment)
+    flash("Visit accepted." if action == "accept" else "Visit returned for correction.", "success")
+    return redirect(url_for("field_visit_detail", visit_id=visit_id))
+
+
+@app.route("/field-visit-photos/<int:photo_id>")
+@field_sales_or_manager_required
+def field_visit_photo(photo_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM field_visit_photos WHERE id=?", (photo_id,)).fetchone()
+    visit = _get_field_visit(db, row["visit_id"]) if row else None
+    if not row or not _can_access_field_visit(current_user(), visit):
+        return "Not found", 404
+    path = os.path.join(_field_photo_dir(), row["stored_name"])
+    if not os.path.isfile(path):
+        return "Image not found", 404
+    return send_file(path, mimetype=row["mime_type"], as_attachment=False, download_name=f"{row['photo_type']}.jpg")
 
 
 # ---------- Invoices (manager only) ----------

@@ -6,9 +6,10 @@
     <h1 class="page-title">{{ company.name }}</h1>
     <p class="page-sub">{{ company.industry or 'No industry set' }} · <span class="owner-badge">{{ company.status or 'Prospect' }}</span></p>
   </div>
-  <form method="post" action="{{ url_for('delete_company', company_id=company.id) }}" onsubmit="return confirm('Delete this company and all its contacts?')">
-    <button type="submit" class="btn btn-danger btn-sm">Delete company</button>
-  </form>
+  <div class="header-actions">
+    {% if current_user.role in ['manager','field_sales'] %}<a class="btn btn-accent btn-sm" href="{{ url_for('field_visit_new', company_id=company.id) }}">{{ 'Assign visit' if current_user.role == 'manager' else 'Start visit' }}</a>{% endif %}
+    <form method="post" action="{{ url_for('delete_company', company_id=company.id) }}" onsubmit="return confirm('Delete this company and all its contacts?')"><button type="submit" class="btn btn-danger btn-sm">Delete company</button></form>
+  </div>
 </div>
 
 <div class="detail-grid">

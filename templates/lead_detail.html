@@ -10,9 +10,10 @@
       {% if lead.interest_level %}<span class="interest-badge interest-{{ lead.interest_level|lower }}">{{ lead.interest_level }}</span>{% endif %}
     </p>
   </div>
-  <form method="post" action="{{ url_for('delete_lead', lead_id=lead.id) }}" onsubmit="return confirm('Delete this lead permanently?')">
-    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-  </form>
+  <div class="header-actions">
+    {% if current_user.role in ['manager','field_sales'] %}<a class="btn btn-accent btn-sm" href="{{ url_for('field_visit_new', lead_id=lead.id) }}">{{ 'Assign visit' if current_user.role == 'manager' else 'Start visit' }}</a>{% endif %}
+    <form method="post" action="{{ url_for('delete_lead', lead_id=lead.id) }}" onsubmit="return confirm('Delete this lead permanently?')"><button type="submit" class="btn btn-danger btn-sm">Delete</button></form>
+  </div>
 </div>
 
 <div class="detail-grid-wide">

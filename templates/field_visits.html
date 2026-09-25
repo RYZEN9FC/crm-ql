@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Field Sales · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Field Sales</h1>
+    <p class="page-sub">Daily field-work sessions, assignments, independent visits and manager review.</p>
+  </div>
+  <div class="header-actions">
+    {% if current_user.role == 'field_sales' %}
+    <a class="btn btn-outline" href="{{ url_for('add_lead', next='field_visit') }}">+ New lead & visit</a>
+    <a class="btn btn-accent" href="{{ url_for('field_visit_new') }}">+ Independent visit</a>
+    {% else %}
+    <a class="btn btn-accent" href="{{ url_for('field_visit_new') }}">+ Assign visit</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if session_filter %}
+<div class="edit-hint">Showing visits linked to field-work session #{{ session_filter }}. <a href="{{ url_for('field_visits') }}">Show all visits</a></div>
+{% endif %}
+
+{% if current_user.role == 'field_sales' %}
+<div class="field-session-card {% if session_today and session_today.status == 'active' %}session-active{% endif %}">
+  <div>
+    <div class="field-session-label">Today's field work</div>
+    {% if not session_today %}
+      <div class="page-sub">Start before creating or checking in to a visit. Sessions automatically close at 6:30 p.m.</div>
+    {% elif session_today.status == 'active' %}
+      <div class="field-session-time">Started {{ session_today.started_at[11:16] }} · {{ session_duration(session_today.started_at) }}</div>
+    {% else %}
+      <div class="field-session-time">{{ session_today.started_at[11:16] }}–{{ session_today.ended_at[11:16] }} · {{ session_duration(session_today.started_at, session_today.ended_at) }}</div>
+      <div class="page-sub">Ended by {{ 'the system at 6:30 p.m.' if session_today.end_source == 'system_assumed' else 'you' }}</div>
+    {% endif %}
+  </div>
+  <div>
+    {% if not session_today %}
+    <form method="post" action="{{ url_for('field_work_start') }}"><button class="btn btn-accent">Start Field Work</button></form>
+    {% elif session_today.status == 'active' %}
+    <form method="post" action="{{ url_for('field_work_end') }}"><button class="btn btn-danger">End Field Work</button></form>
+    {% else %}<span class="visit-badge accepted">Closed</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="visit-filter-row" id="visitFilters">
+  <button class="btn btn-outline btn-sm active" data-filter="all">All</button>
+  <button class="btn btn-outline btn-sm" data-filter="scheduled">Upcoming</button>
+  <button class="btn btn-outline btn-sm" data-filter="checked_in">In progress</button>
+  <button class="btn btn-outline btn-sm" data-filter="review_pending">Review pending</button>
+  <button class="btn btn-outline btn-sm" data-filter="completed">Completed</button>
+  <button class="btn btn-outline btn-sm" data-filter="needs_correction">Needs correction</button>
+</div>
+
+<div class="visit-card-grid" id="visitGrid">
+  {% for v in visits %}
+  <a class="visit-card" data-status="{{ v.status }}" href="{{ url_for('field_visit_detail', visit_id=v.id) }}">
+    <div class="visit-card-head">
+      <span class="visit-badge {{ v.status }}">{{ v.status.replace('_',' ').title() }}</span>
+      <span class="visit-origin {{ v.origin }}">{{ 'Manager-assigned' if v.origin == 'manager_assigned' else 'Executive-initiated' }}</span>
+    </div>
+    <h3>{{ v.company_name or v.lead_name or 'Field visit' }}</h3>
+    {% if v.lead_name %}<div class="page-sub">Lead: {{ v.lead_name }}</div>{% endif %}
+    <div class="visit-card-meta">{{ v.scheduled_date }}{% if v.scheduled_time %} · {{ v.scheduled_time }}{% endif %}</div>
+    <div class="visit-card-meta">{{ v.location_address }}</div>
+    <div class="visit-card-purpose">{{ v.purpose }}</div>
+    {% if current_user.role == 'manager' %}<div class="page-sub">Executive: {{ v.executive_name or 'Unassigned' }}</div>{% endif %}
+  </a>
+  {% else %}
+  <div class="empty-state">No field visits yet.</div>
+  {% endfor %}
+</div>
+
+{% if current_user.role == 'manager' %}
+<h2 class="section-title">Recent field-work sessions</h2>
+<div class="table-card">
+  <table>
+    <thead><tr><th>Date</th><th>Executive</th><th>Start</th><th>End</th><th>Duration</th><th>Visits</th><th>End source</th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td>{{ s.work_date }}</td><td>{{ s.executive_name or 'Former user' }}</td>
+        <td>{{ s.started_at[11:16] }}</td><td>{{ s.ended_at[11:16] if s.ended_at else 'Active' }}</td>
+        <td>{{ session_duration(s.started_at, s.ended_at) }}</td><td><a href="{{ url_for('field_visits', session=s.id) }}">{{ s.visit_count }} visit{{ '' if s.visit_count == 1 else 's' }}</a></td>
+        <td>{{ 'System-assumed' if s.end_source == 'system_assumed' else ('Executive' if s.end_source else '—') }}</td>
+      </tr>
+      {% else %}<tr><td colspan="7"><div class="empty-state">No field-work sessions recorded.</div></td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+document.querySelectorAll('#visitFilters button').forEach(button => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('#visitFilters button').forEach(b => b.classList.remove('active'));
+    button.classList.add('active');
+    const filter = button.dataset.filter;
+    document.querySelectorAll('#visitGrid .visit-card').forEach(card => {
+      card.style.display = filter === 'all' || card.dataset.status === filter ? '' : 'none';
+    });
+  });
+});
+</script>
+{% endblock %}

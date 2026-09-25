@@ -9,6 +9,10 @@ A lightweight CRM (Customer Relationship Management) application developed using
 * Lead Management
 * Customer Database
 * Telecaller Workflow
+<<<<<<< HEAD
+=======
+* Field Sales Visits & Daily Work Sessions
+>>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 * Lead Assignment & Transfers
 * Reports & Exports (Excel)
 * PDF Generation
@@ -77,6 +81,10 @@ Create a `.env` file in the project root:
 ```env
 SECRET_KEY=your-secret-key
 SESSION_COOKIE_SECURE=false
+<<<<<<< HEAD
+=======
+FIELD_PHOTO_DIR=/secure/persistent/path/field_visit_photos
+>>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 ```
 
 Example file:
@@ -89,6 +97,18 @@ Example file:
 
 * `.env` should never be committed to Git.
 * Production secrets are stored separately on the server.
+<<<<<<< HEAD
+=======
+* `FIELD_PHOTO_DIR` is optional. When omitted, protected visit photos are stored under Flask's local `instance/field_visit_photos` directory. Back this directory up in production.
+
+---
+
+## Field Sales Workflow
+
+Managers can schedule visits against an existing lead or company and assign them to a Field Sales Executive. Executives can also create independent visits, or create a duplicate-checked lead before starting a visit.
+
+Executives start one daily field-work session, check in with a location status, capture office and visiting-card evidence directly from the device camera, submit visit outcomes and next actions, and end field work after the last visit. Unclosed sessions reconcile to a system-assumed 6:30 p.m. IST end time. Managers can accept visits or return them with a correction comment.
+>>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 
 ---
 

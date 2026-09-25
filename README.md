@@ -9,10 +9,7 @@ A lightweight CRM (Customer Relationship Management) application developed using
 * Lead Management
 * Customer Database
 * Telecaller Workflow
-<<<<<<< HEAD
-=======
 * Field Sales Visits & Daily Work Sessions
->>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 * Lead Assignment & Transfers
 * Reports & Exports (Excel)
 * PDF Generation
@@ -25,6 +22,7 @@ A lightweight CRM (Customer Relationship Management) application developed using
 ## Technology Stack
 
 * **Backend:** Python, Flask
+* **Authentication:** Google OpenID Connect (Authlib)
 * **Database:** SQLite
 * **Frontend:** HTML, CSS, JavaScript
 * **Excel Processing:** OpenPyXL
@@ -81,10 +79,11 @@ Create a `.env` file in the project root:
 ```env
 SECRET_KEY=your-secret-key
 SESSION_COOKIE_SECURE=false
-<<<<<<< HEAD
-=======
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://127.0.0.1:5000/auth/google/callback
+GOOGLE_BOOTSTRAP_EMAILS=manager@yourcompany.com
 FIELD_PHOTO_DIR=/secure/persistent/path/field_visit_photos
->>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 ```
 
 Example file:
@@ -97,9 +96,17 @@ Example file:
 
 * `.env` should never be committed to Git.
 * Production secrets are stored separately on the server.
-<<<<<<< HEAD
-=======
 * `FIELD_PHOTO_DIR` is optional. When omitted, protected visit photos are stored under Flask's local `instance/field_visit_photos` directory. Back this directory up in production.
+
+### Google Login Setup
+
+1. In Google Cloud Console, create an OAuth 2.0 Client ID with application type **Web application**.
+2. Add `http://127.0.0.1:5000/auth/google/callback` as an authorized redirect URI for local development. Add the exact HTTPS callback URL for production, such as `https://crm.example.com/auth/google/callback`.
+3. Copy the client ID, client secret and exact redirect URI into `.env`.
+4. For an existing database, set `GOOGLE_BOOTSTRAP_EMAILS` to the first manager's Google email. That address may bind the first manager account that does not yet have an email. Remove the bootstrap value after the manager has logged in.
+5. From the manager's **Users** page, assign the correct Google email to every telecaller, Field Sales Executive and manager.
+
+Password login is disabled. Google must return a verified email that is already authorized in the CRM. A successful login creates a persistent CRM session (10 years by default, refreshed with use) so the same browser stays signed in until logout, cookie removal or a server secret change. Change `LOGIN_SESSION_DAYS` if a shorter policy is required.
 
 ---
 
@@ -108,7 +115,6 @@ Example file:
 Managers can schedule visits against an existing lead or company and assign them to a Field Sales Executive. Executives can also create independent visits, or create a duplicate-checked lead before starting a visit.
 
 Executives start one daily field-work session, check in with a location status, capture office and visiting-card evidence directly from the device camera, submit visit outcomes and next actions, and end field work after the last visit. Unclosed sessions reconcile to a system-assumed 6:30 p.m. IST end time. Managers can accept visits or return them with a correction comment.
->>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 
 ---
 

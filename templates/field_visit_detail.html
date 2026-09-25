@@ -30,6 +30,7 @@
       <div class="lead-meta-row"><span class="k">Purpose</span><span class="v">{{ visit.purpose }}</span></div>
       {% if visit.lead_id %}<a class="btn btn-outline btn-sm" href="{{ url_for('lead_detail', lead_id=visit.lead_id) }}">Open lead</a>{% endif %}
       {% if visit.company_id %}<a class="btn btn-outline btn-sm" href="{{ url_for('company_detail', company_id=visit.company_id) }}">Open company</a>{% endif %}
+      <a class="btn btn-outline btn-sm" href="https://www.google.com/maps/search/?api=1&query={{ visit.location_address|urlencode }}" target="_blank" rel="noopener">Map scheduled address</a>
     </div>
 
     {% if visit.checkin_at %}
@@ -38,6 +39,19 @@
       <div class="lead-meta-row"><span class="k">Time</span><span class="v">{{ visit.checkin_at }}</span></div>
       <div class="lead-meta-row"><span class="k">Location</span><span class="v">{{ visit.location_status or 'unavailable' }}{% if visit.checkin_lat is not none %} · {{ '%.6f'|format(visit.checkin_lat) }}, {{ '%.6f'|format(visit.checkin_lng) }}{% endif %}{% if visit.checkin_accuracy %} (±{{ visit.checkin_accuracy|round|int }}m){% endif %}</span></div>
       {% if work_session %}<div class="lead-meta-row"><span class="k">Field session</span><span class="v">{{ work_session.work_date }} · {{ session_duration(work_session.started_at, work_session.ended_at) }}</span></div>{% endif %}
+      {% if visit.checkin_lat is not none and visit.checkin_lng is not none %}
+      <div class="location-quality {{ 'good' if visit.checkin_accuracy and visit.checkin_accuracy <= 25 else ('medium' if visit.checkin_accuracy and visit.checkin_accuracy <= 75 else 'poor') }}">
+        GPS accuracy: {% if visit.checkin_accuracy %}±{{ visit.checkin_accuracy|round|int }} metres{% else %}not reported{% endif %}
+      </div>
+      <div class="location-map saved-location-map" data-lat="{{ visit.checkin_lat }}" data-lng="{{ visit.checkin_lng }}">
+        <iframe title="Saved visit check-in location" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      </div>
+      <div class="map-actions">
+        <a class="btn btn-outline btn-sm" href="https://www.google.com/maps/search/?api=1&query={{ visit.checkin_lat }},{{ visit.checkin_lng }}" target="_blank" rel="noopener">Open check-in in Google Maps</a>
+      </div>
+      {% else %}
+      <div class="edit-hint">No coordinates were available at check-in. Location status: {{ visit.location_status or 'unavailable' }}.</div>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -59,11 +73,19 @@
     {% if current_user.role == 'field_sales' and visit.status == 'scheduled' %}
     <div class="card">
       <h2 class="section-title">Arrival check-in</h2>
-      <p class="page-sub">Your timestamp is recorded immediately. Location permission is requested and its status is saved even if unavailable.</p>
+      <p class="page-sub">First acquire GPS. The app samples multiple readings and keeps the most accurate one. Confirm the point on the map before checking in.</p>
       <form method="post" action="{{ url_for('field_visit_checkin', visit_id=visit.id) }}" id="checkinForm">
         <input type="hidden" name="latitude" id="latitude"><input type="hidden" name="longitude" id="longitude">
         <input type="hidden" name="accuracy" id="accuracy"><input type="hidden" name="location_status" id="locationStatus" value="unavailable">
-        <button type="button" class="btn btn-accent btn-block" id="checkinButton" {% if not active_session %}disabled{% endif %}>Check in now</button>
+        <div class="gps-status" id="gpsStatus">GPS has not been acquired.</div>
+        <div class="location-map" id="liveLocationMap" hidden>
+          <iframe title="Live GPS check-in preview" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        </div>
+        <div class="map-actions">
+          <button type="button" class="btn btn-outline" id="locateButton" {% if not active_session %}disabled{% endif %}>Get precise location</button>
+          <button type="submit" class="btn btn-accent" id="checkinButton" disabled>Confirm check-in here</button>
+          <button type="button" class="btn btn-danger btn-sm" id="noLocationButton" hidden>Continue without GPS</button>
+        </div>
       </form>
       {% if not active_session %}<div class="edit-hint">Start Field Work from the Field Sales page before checking in.</div>{% endif %}
     </div>
@@ -133,18 +155,108 @@
 </div>
 
 <script>
+function showMap(container, latitude, longitude) {
+  if (!container || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+  const delta = 0.003;
+  const bbox = [longitude - delta, latitude - delta, longitude + delta, latitude + delta].join(',');
+  const params = new URLSearchParams({bbox, layer: 'mapnik', marker: `${latitude},${longitude}`});
+  container.querySelector('iframe').src = `https://www.openstreetmap.org/export/embed.html?${params.toString()}`;
+  container.hidden = false;
+}
+
+document.querySelectorAll('.saved-location-map').forEach(map => {
+  showMap(map, Number(map.dataset.lat), Number(map.dataset.lng));
+});
+
+const checkinForm = document.getElementById('checkinForm');
+const locateButton = document.getElementById('locateButton');
 const checkinButton = document.getElementById('checkinButton');
-if (checkinButton) {
-  checkinButton.addEventListener('click', () => {
-    checkinButton.disabled = true; checkinButton.textContent = 'Getting location…';
-    const submit = status => { document.getElementById('locationStatus').value = status; document.getElementById('checkinForm').submit(); };
-    if (!navigator.geolocation) return submit('unsupported');
-    navigator.geolocation.getCurrentPosition(pos => {
-      document.getElementById('latitude').value = pos.coords.latitude;
-      document.getElementById('longitude').value = pos.coords.longitude;
-      document.getElementById('accuracy').value = pos.coords.accuracy;
-      submit('captured');
-    }, err => submit(err.code === 1 ? 'denied' : 'unavailable'), {enableHighAccuracy:true, timeout:12000, maximumAge:0});
+const noLocationButton = document.getElementById('noLocationButton');
+const gpsStatus = document.getElementById('gpsStatus');
+const liveMap = document.getElementById('liveLocationMap');
+let locationWatch = null;
+let locationTimer = null;
+let bestAccuracy = Infinity;
+let sampleCount = 0;
+
+function stopLocationWatch() {
+  if (locationWatch !== null && navigator.geolocation) navigator.geolocation.clearWatch(locationWatch);
+  if (locationTimer) window.clearTimeout(locationTimer);
+  locationWatch = null; locationTimer = null;
+}
+
+function locationQuality(accuracy) {
+  if (accuracy <= 25) return ['Good', 'good'];
+  if (accuracy <= 75) return ['Moderate', 'medium'];
+  return ['Low', 'poor'];
+}
+
+function locationFailed(status, message) {
+  stopLocationWatch();
+  document.getElementById('locationStatus').value = status;
+  gpsStatus.className = 'gps-status poor';
+  gpsStatus.textContent = message;
+  locateButton.disabled = false;
+  locateButton.textContent = 'Try GPS again';
+  noLocationButton.hidden = false;
+}
+
+if (locateButton) {
+  locateButton.addEventListener('click', () => {
+    stopLocationWatch(); bestAccuracy = Infinity; sampleCount = 0;
+    document.getElementById('latitude').value = '';
+    document.getElementById('longitude').value = '';
+    document.getElementById('accuracy').value = '';
+    document.getElementById('locationStatus').value = 'unavailable';
+    liveMap.hidden = true;
+    checkinButton.disabled = true; noLocationButton.hidden = true;
+    locateButton.disabled = true; locateButton.textContent = 'Improving GPS…';
+    gpsStatus.className = 'gps-status locating';
+    gpsStatus.textContent = 'Waiting for a high-accuracy GPS reading…';
+    if (!navigator.geolocation) return locationFailed('unsupported', 'This browser does not provide device location.');
+
+    locationWatch = navigator.geolocation.watchPosition(position => {
+      sampleCount += 1;
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
+      if (!Number.isFinite(accuracy) || accuracy >= bestAccuracy) return;
+      bestAccuracy = accuracy;
+      document.getElementById('latitude').value = latitude.toFixed(7);
+      document.getElementById('longitude').value = longitude.toFixed(7);
+      document.getElementById('accuracy').value = accuracy.toFixed(1);
+      document.getElementById('locationStatus').value = 'captured';
+      const quality = locationQuality(accuracy);
+      gpsStatus.className = `gps-status ${quality[1]}`;
+      gpsStatus.textContent = `${quality[0]} accuracy: ±${Math.round(accuracy)} metres · ${sampleCount} GPS reading${sampleCount === 1 ? '' : 's'}`;
+      showMap(liveMap, latitude, longitude);
+      checkinButton.disabled = false;
+      if (accuracy <= 20) {
+        stopLocationWatch(); locateButton.disabled = false; locateButton.textContent = 'Refresh GPS';
+      }
+    }, error => {
+      const denied = error.code === error.PERMISSION_DENIED;
+      locationFailed(denied ? 'denied' : 'unavailable', denied ? 'Location permission was denied. Enable it in browser settings and try again.' : 'GPS could not get a position. Move near a window or outdoors and try again.');
+    }, {enableHighAccuracy:true, timeout:20000, maximumAge:0});
+
+    locationTimer = window.setTimeout(() => {
+      stopLocationWatch(); locateButton.disabled = false; locateButton.textContent = 'Refresh GPS';
+      if (bestAccuracy === Infinity) locationFailed('unavailable', 'No GPS reading was received. Move near a window or outdoors and try again.');
+      else gpsStatus.textContent += ' · Best reading saved';
+    }, 20000);
+  });
+
+  checkinForm.addEventListener('submit', event => {
+    if (!document.getElementById('latitude').value) {
+      event.preventDefault();
+      gpsStatus.textContent = 'Acquire GPS or choose Continue without GPS.';
+    } else {
+      stopLocationWatch(); checkinButton.disabled = true; checkinButton.textContent = 'Checking in…';
+    }
+  });
+
+  noLocationButton.addEventListener('click', () => {
+    if (window.confirm('Continue without a GPS point? The manager will see that location was unavailable.')) checkinForm.submit();
   });
 }
 
@@ -168,6 +280,6 @@ document.querySelectorAll('.camera-capture').forEach(box => {
     video.hidden = true; take.hidden = true; stopCamera(); start.textContent = 'Retake photo';
   });
 });
-window.addEventListener('beforeunload', stopCamera);
+window.addEventListener('beforeunload', () => { stopCamera(); stopLocationWatch(); });
 </script>
 {% endblock %}

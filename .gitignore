@@ -7,3 +7,4 @@ env/
 instance/
 *.db
 .DS_Store
+*.zip

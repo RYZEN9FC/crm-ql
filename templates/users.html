@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Users</h1>
-    <p class="page-sub">Telecallers, Field Sales Executives and Customer Relations Managers who can log in.</p>
+    <p class="page-sub">Authorize the Google account each team member will use to access the CRM.</p>
   </div>
 </div>
 
@@ -18,12 +18,8 @@
           <input type="text" name="name" required>
         </div>
         <div class="form-group">
-          <label>Username</label>
-          <input type="text" name="username" required>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" name="password" required>
+          <label>Google account email</label>
+          <input type="email" name="email" autocomplete="email" placeholder="name@company.com" required>
         </div>
         <div class="form-group">
           <label>Role</label>
@@ -42,13 +38,21 @@
     <div class="table-card">
       <table>
         <thead>
-          <tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr>
+          <tr><th>Name</th><th>Google login</th><th>Role</th><th></th></tr>
         </thead>
         <tbody>
           {% for u in users %}
           <tr>
             <td>{{ u.name }}</td>
-            <td>{{ u.username }}</td>
+            <td>
+              <form method="post" action="{{ url_for('update_user_google_email', user_id=u.id) }}" class="inline-email-form">
+                <input type="email" name="email" value="{{ u.email or '' }}" placeholder="Add Google email" aria-label="Google email for {{ u.name }}" required>
+                <button type="submit" class="btn btn-outline btn-sm">Save</button>
+              </form>
+              <span class="google-link-status {{ 'is-linked' if u.google_sub else 'is-pending' }}">
+                {{ 'Google linked' if u.google_sub else ('Ready for first login' if u.email else 'Login not configured') }}
+              </span>
+            </td>
             <td><span class="stage-pill {{ 'stage-Converted' if u.role == 'manager' else ('stage-Interested' if u.role == 'field_sales' else 'stage-Contacted') }}">{{ 'Manager' if u.role == 'manager' else ('Field Sales' if u.role == 'field_sales' else 'Telecaller') }}</span></td>
             <td>
               <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" onsubmit="return confirm('Remove this user? Their leads stay, just unassigned.')">

@@ -752,6 +752,62 @@ td.phone { color: var(--text-soft); font-variant-numeric: tabular-nums; }
   line-height: 1.5;
 }
 
+.google-login-btn {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 11px 16px;
+  background: #fff;
+  color: #202124;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: box-shadow .18s ease, background .18s ease;
+}
+.google-login-btn:hover {
+  background: #f8fafd;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, .22);
+}
+.auth-device-note {
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 14px 0 0;
+  text-align: center;
+}
+.auth-config-warning {
+  padding: 12px 14px;
+  border: 1px solid rgba(245, 158, 11, .45);
+  background: rgba(245, 158, 11, .09);
+  color: var(--text-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inline-email-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 280px;
+}
+.inline-email-form input {
+  min-width: 210px;
+  padding: 7px 9px;
+}
+.google-link-status {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 11.5px;
+}
+.google-link-status.is-linked { color: var(--success); }
+.google-link-status.is-pending { color: var(--text-faint); }
+
 /* ---------- Sidebar user card ---------- */
 .user-card {
   border-top: 1px solid var(--border);
@@ -1714,4 +1770,36 @@ html[data-theme="light"] .visit-badge.needs_correction { background: #FDEBEC; co
   .field-session-card { align-items: stretch; flex-direction: column; }
   .field-session-card .btn { width: 100%; }
   .visit-card-grid { grid-template-columns: 1fr; }
+}
+
+.location-map {
+  width: 100%;
+  min-height: 300px;
+  margin: 12px 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.location-map iframe { display: block; width: 100%; height: 300px; border: 0; }
+.map-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.gps-status, .location-quality {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: .86rem;
+  font-weight: 600;
+}
+.gps-status.locating { color: #5EA0E6; }
+.gps-status.good, .location-quality.good { background: rgba(46,153,100,.16); color: #4FC489; }
+.gps-status.medium, .location-quality.medium { background: rgba(245,158,11,.16); color: #F2AE35; }
+.gps-status.poor, .location-quality.poor { background: rgba(227,30,36,.16); color: #F07074; }
+html[data-theme="light"] .gps-status.good, html[data-theme="light"] .location-quality.good { background: #E9F7EF; color: #2E9964; }
+html[data-theme="light"] .gps-status.medium, html[data-theme="light"] .location-quality.medium { background: #FFF4E5; color: #B6720B; }
+html[data-theme="light"] .gps-status.poor, html[data-theme="light"] .location-quality.poor { background: #FDEBEC; color: #B8181D; }
+@media (max-width: 640px) {
+  .location-map, .location-map iframe { min-height: 240px; height: 240px; }
+  .map-actions .btn { flex: 1 1 100%; }
 }

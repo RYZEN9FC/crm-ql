@@ -2,13 +2,10 @@ import sqlite3
 import csv
 import io
 import os
-<<<<<<< HEAD
-=======
 import base64
 import binascii
 import hashlib
 import uuid
->>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,7 +13,15 @@ import json
 from functools import wraps
 from datetime import datetime, date, time, timedelta, timezone
 from flask import Flask, render_template, request, redirect, url_for, flash, g, session, jsonify, Response, send_file
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+try:
+    from authlib.integrations.flask_client import OAuth
+    from authlib.integrations.base_client.errors import OAuthError
+except ImportError:  # Keeps the setup page usable until requirements are installed.
+    OAuth = None
+    OAuthError = Exception
+
 from invoice_pdf import build_invoice_pdf
 
 DB_PATH = "leads.db"
@@ -63,17 +68,29 @@ COMPANY_STATUSES = ["Prospect", "Customer", "Inactive"]
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
 app.config.update(
-<<<<<<< HEAD
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "true").strip().lower() in {"1", "true", "yes", "on"},
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-=======
-    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"},
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(
+        days=max(1, int(os.environ.get("LOGIN_SESSION_DAYS", "3650")))
+    ),
+    SESSION_REFRESH_EACH_REQUEST=True,
     MAX_CONTENT_LENGTH=12 * 1024 * 1024,
->>>>>>> b90a4fe (Update CRM invoice and field visit modules)
 )
+# Only trust forwarded host/protocol headers when the deployment has a known proxy.
+if os.environ.get("TRUST_PROXY_HEADERS", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+oauth = OAuth(app) if OAuth else None
+google = None
+if oauth and os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"):
+    google = oauth.register(
+        name="google",
+        client_id=os.environ["GOOGLE_CLIENT_ID"],
+        client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 
 
 def get_db():
@@ -112,6 +129,24 @@ def init_db():
             created_at TEXT NOT NULL
         )
         """
+    )
+    _add_cols(db, "users", [
+        ("email", "TEXT"),
+        ("google_sub", "TEXT"),
+        ("last_login_at", "TEXT"),
+    ])
+    # Older installations sometimes used an email address as the username.
+    db.execute(
+        "UPDATE users SET email=LOWER(TRIM(username)) "
+        "WHERE (email IS NULL OR TRIM(email)='') AND username LIKE '%@%'"
+    )
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase "
+        "ON users(email COLLATE NOCASE) WHERE email IS NOT NULL AND TRIM(email) <> ''"
+    )
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub "
+        "ON users(google_sub) WHERE google_sub IS NOT NULL AND TRIM(google_sub) <> ''"
     )
     db.execute(
         """
@@ -537,7 +572,7 @@ def _reconcile_field_sessions(db):
 
 @app.before_request
 def require_login():
-    open_endpoints = {"login", "setup", "static"}
+    open_endpoints = {"login", "setup", "google_login", "google_callback", "static"}
     if request.endpoint in open_endpoints:
         return
     db = get_db()
@@ -575,6 +610,28 @@ def visible_leads_clause(user):
 
 # ---------- Setup / Auth ----------
 
+def _normalize_email(value):
+    return (value or "").strip().lower()
+
+
+def _valid_email(value):
+    email = _normalize_email(value)
+    return bool(email and "@" in email and not email.startswith("@") and not email.endswith("@"))
+
+
+def _safe_next_url(value):
+    return value if value and value.startswith("/") and not value.startswith("//") else None
+
+
+def _bootstrap_emails():
+    raw = os.environ.get("GOOGLE_BOOTSTRAP_EMAILS", "")
+    return {_normalize_email(value) for value in raw.replace(";", ",").split(",") if value.strip()}
+
+
+def _google_redirect_uri():
+    return os.environ.get("GOOGLE_REDIRECT_URI", "").strip() or url_for("google_callback", _external=True)
+
+
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
     db = get_db()
@@ -584,40 +641,128 @@ def setup():
 
     if request.method == "POST":
         name = request.form.get("name", "").strip()
-        username = request.form.get("username", "").strip().lower()
-        password = request.form.get("password", "")
-        if not name or not username or not password:
-            flash("All fields are required.", "error")
+        email = _normalize_email(request.form.get("email"))
+        if not name or not _valid_email(email):
+            flash("Enter your name and a valid Google account email.", "error")
             return redirect(url_for("setup"))
         db.execute(
-            "INSERT INTO users (username, password_hash, name, role, created_at) VALUES (?, ?, ?, 'manager', ?)",
-            (username, generate_password_hash(password), name, now_str()),
+            "INSERT INTO users (username, password_hash, name, role, email, created_at) "
+            "VALUES (?, 'google-only', ?, 'manager', ?, ?)",
+            (email, name, email, now_str()),
         )
         db.commit()
-        flash("Account created. You're set up as a Customer Relations Manager — add your telecallers from Users.", "success")
+        flash("Manager access created. Continue with Google using that email.", "success")
         return redirect(url_for("login"))
 
     return render_template("setup.html")
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
-    if request.method == "POST":
-        db = get_db()
-        username = request.form.get("username", "").strip().lower()
-        password = request.form.get("password", "")
-        user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        if user and check_password_hash(user["password_hash"], password):
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
-            g.user = user
-            log_activity("Login", "auth", user["id"], user["name"])
-            next_url = request.args.get("next") or url_for("dashboard")
-            return redirect(next_url)
-        flash("Incorrect username or password.", "error")
+    if current_user():
+        return redirect(url_for("dashboard"))
+    next_url = _safe_next_url(request.args.get("next"))
+    if next_url:
+        session["post_login_next"] = next_url
+    return render_template(
+        "login.html",
+        google_ready=google is not None,
+        authlib_ready=OAuth is not None,
+    )
+
+
+@app.route("/auth/google")
+def google_login():
+    if current_user():
+        return redirect(url_for("dashboard"))
+    if google is None:
+        if OAuth is None:
+            flash("Google login dependency is not installed. Run pip install -r requirements.txt.", "error")
+        else:
+            flash("Google login is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.", "error")
+        return redirect(url_for("login"))
+    return google.authorize_redirect(_google_redirect_uri())
+
+
+@app.route("/auth/google/callback")
+def google_callback():
+    if google is None:
+        flash("Google login is not configured.", "error")
         return redirect(url_for("login"))
 
-    return render_template("login.html")
+    try:
+        token = google.authorize_access_token()
+        userinfo = token.get("userinfo") or google.userinfo(token=token)
+    except OAuthError:
+        flash("Google sign-in was cancelled or could not be verified. Please try again.", "error")
+        return redirect(url_for("login"))
+    except Exception:
+        app.logger.exception("Google sign-in callback failed")
+        flash("Google sign-in could not be completed. Please try again.", "error")
+        return redirect(url_for("login"))
+
+    email = _normalize_email(userinfo.get("email"))
+    google_sub = (userinfo.get("sub") or "").strip()
+    email_verified = userinfo.get("email_verified") in {True, "true", "True", 1, "1"}
+    if not email or not google_sub or not email_verified:
+        flash("Google did not provide a verified email address.", "error")
+        return redirect(url_for("login"))
+
+    allowed_domain = os.environ.get("GOOGLE_ALLOWED_DOMAIN", "").strip().lower().lstrip("@")
+    if allowed_domain and email.rsplit("@", 1)[-1] != allowed_domain:
+        flash(f"Use your @{allowed_domain} Google account.", "error")
+        return redirect(url_for("login"))
+
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE google_sub = ?", (google_sub,)).fetchone()
+    if user and _normalize_email(user["email"]) != email:
+        flash("This Google account no longer matches its authorized CRM email. Ask a manager to update it.", "error")
+        return redirect(url_for("login"))
+
+    if not user:
+        user = db.execute("SELECT * FROM users WHERE email = ? COLLATE NOCASE", (email,)).fetchone()
+        if user and user["google_sub"] and user["google_sub"] != google_sub:
+            flash("That CRM email is already linked to another Google account.", "error")
+            return redirect(url_for("login"))
+
+    # Recovery/migration path for an existing manager whose old username was not
+    # an email. It only activates for an explicitly configured bootstrap address.
+    if not user and email in _bootstrap_emails():
+        user = db.execute(
+            "SELECT * FROM users WHERE role='manager' AND (email IS NULL OR TRIM(email)='') ORDER BY id LIMIT 1"
+        ).fetchone()
+        if not user and db.execute("SELECT COUNT(*) c FROM users").fetchone()["c"] == 0:
+            display_name = (userinfo.get("name") or email.split("@", 1)[0]).strip()
+            cursor = db.execute(
+                "INSERT INTO users (username, password_hash, name, role, email, google_sub, last_login_at, created_at) "
+                "VALUES (?, 'google-only', ?, 'manager', ?, ?, ?, ?)",
+                (email, display_name, email, google_sub, now_str(), now_str()),
+            )
+            user = db.execute("SELECT * FROM users WHERE id=?", (cursor.lastrowid,)).fetchone()
+
+    if not user:
+        flash("This Google account is not authorized for QuantumLoop CRM. Ask a manager to add its email.", "error")
+        return redirect(url_for("login"))
+
+    try:
+        db.execute(
+            "UPDATE users SET email=?, google_sub=?, last_login_at=? WHERE id=?",
+            (email, google_sub, now_str(), user["id"]),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("This Google account conflicts with another CRM user. Ask a manager to correct the email.", "error")
+        return redirect(url_for("login"))
+
+    next_url = _safe_next_url(session.get("post_login_next")) or url_for("dashboard")
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user["id"]
+    session["role"] = user["role"]
+    g.user = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+    log_activity("Login with Google", "auth", user["id"], user["name"])
+    return redirect(next_url)
 
 
 @app.route("/logout")
@@ -644,25 +789,60 @@ def users_list():
 def add_user():
     db = get_db()
     name = request.form.get("name", "").strip()
-    username = request.form.get("username", "").strip().lower()
-    password = request.form.get("password", "")
+    email = _normalize_email(request.form.get("email"))
     role = request.form.get("role", "telecaller")
 
-    if not name or not username or not password or role not in ROLES:
-        flash("Please fill every field with a valid role.", "error")
+    if not name or not _valid_email(email) or role not in ROLES:
+        flash("Enter a name, valid Google email and role.", "error")
         return redirect(url_for("users_list"))
 
-    existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    existing = db.execute(
+        "SELECT id FROM users WHERE email=? COLLATE NOCASE OR username=? COLLATE NOCASE",
+        (email, email),
+    ).fetchone()
     if existing:
-        flash(f"Username '{username}' is already taken.", "error")
+        flash(f"Google email '{email}' is already assigned. Update the existing user instead.", "error")
         return redirect(url_for("users_list"))
 
     db.execute(
-        "INSERT INTO users (username, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?)",
-        (username, generate_password_hash(password), name, role, now_str()),
+        "INSERT INTO users (username, password_hash, name, role, email, created_at) "
+        "VALUES (?, 'google-only', ?, ?, ?, ?)",
+        (email, name, role, email, now_str()),
     )
     db.commit()
-    flash(f"{name} added as a {role}.", "success")
+    flash(f"{name} can now sign in with {email}.", "success")
+    return redirect(url_for("users_list"))
+
+
+@app.route("/users/<int:user_id>/google-email", methods=["POST"])
+@manager_required
+def update_user_google_email(user_id):
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("users_list"))
+
+    email = _normalize_email(request.form.get("email"))
+    if not _valid_email(email):
+        flash("Enter a valid Google account email.", "error")
+        return redirect(url_for("users_list"))
+    existing = db.execute(
+        "SELECT id FROM users WHERE email=? COLLATE NOCASE AND id<>?",
+        (email, user_id),
+    ).fetchone()
+    if existing:
+        flash(f"Google email '{email}' is already assigned to another user.", "error")
+        return redirect(url_for("users_list"))
+
+    old_email = _normalize_email(user["email"])
+    unlink_google = old_email != email
+    db.execute(
+        "UPDATE users SET email=?, google_sub=CASE WHEN ? THEN NULL ELSE google_sub END WHERE id=?",
+        (email, 1 if unlink_google else 0, user_id),
+    )
+    db.commit()
+    flash(f"Google login email updated for {user['name']}.", "success")
     return redirect(url_for("users_list"))
 
 
@@ -2185,8 +2365,15 @@ def field_visit_checkin(visit_id):
     lat = optional_float("latitude")
     lng = optional_float("longitude")
     accuracy = optional_float("accuracy")
-    if location_status == "captured" and (lat is None or lng is None):
+    coordinates_valid = (
+        lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180
+        and accuracy is not None and 0 <= accuracy <= 100000
+    )
+    if location_status == "captured" and not coordinates_valid:
         location_status = "error"
+        lat = lng = accuracy = None
+    elif location_status != "captured":
+        lat = lng = accuracy = None
 
     db.execute(
         """UPDATE field_visits SET status='checked_in',session_id=?,checkin_at=?,checkin_lat=?,checkin_lng=?,

@@ -591,13 +591,19 @@ def require_login():
     open_endpoints = {"login", "setup", "google_login", "google_callback", "manual_admin_login", "static"}
     if request.endpoint in open_endpoints:
         return
+    if request.endpoint is None:
+        # Unknown URLs (e.g. the browser's automatic /favicon.ico request) get a plain 404
+        # instead of being remembered as the post-login destination.
+        return
     db = get_db()
     _reconcile_field_sessions(db)
     has_users = db.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
     if not has_users and request.endpoint != "setup":
         return redirect(url_for("setup"))
     if has_users and not current_user():
-        return redirect(url_for("login", next=request.path))
+        if request.method == "GET":
+            return redirect(url_for("login", next=request.path))
+        return redirect(url_for("login"))
 
 
 def visible_leads_clause(user):

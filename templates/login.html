@@ -1,19 +1,31 @@
 {% extends "auth_base.html" %}
 {% block title %}Log in · Lead Desk{% endblock %}
 {% block content %}
-<h1 class="auth-title">Log in</h1>
-<p class="auth-sub">Use the Google account authorized by your QuantumLoop manager.</p>
+<div class="auth-heading">
+  <span class="auth-eyebrow">Secure CRM access</span>
+  <h1 class="auth-title">Welcome back</h1>
+  <p class="auth-sub">Sign in with the Google account approved by your QuantumLoop manager.</p>
+</div>
 {% if google_ready %}
 <a href="{{ url_for('google_login') }}" class="google-login-btn">
-  <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
-    <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41z"/>
-    <path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22z"/>
-    <path fill="#FBBC05" d="M6.39 13.93A6.02 6.02 0 0 1 6.07 12c0-.67.12-1.32.32-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.55l3.35-2.62z"/>
-    <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94z"/>
-  </svg>
-  <span>Continue with Google</span>
+  <span class="google-icon-wrap">
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="21" height="21">
+      <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41z"/>
+      <path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22z"/>
+      <path fill="#FBBC05" d="M6.39 13.93A6.02 6.02 0 0 1 6.07 12c0-.67.12-1.32.32-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.55l3.35-2.62z"/>
+      <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94z"/>
+    </svg>
+  </span>
+  <span class="google-button-copy">
+    <strong>Continue with Google</strong>
+    <small>Use your authorized work account</small>
+  </span>
+  <span class="auth-button-arrow" aria-hidden="true">→</span>
 </a>
-<p class="auth-device-note">You’ll stay signed in on this device until you log out.</p>
+<div class="auth-device-note">
+  <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17"><path d="M12 3 5.5 5.7v5.5c0 4.2 2.7 8 6.5 9.3 3.8-1.3 6.5-5.1 6.5-9.3V5.7L12 3Zm3.1 7.1-3.7 4a1 1 0 0 1-1.5 0l-1.8-1.9 1.2-1.2 1.3 1.3 3.2-3.4 1.3 1.2Z" fill="currentColor"/></svg>
+  <span>You’ll stay signed in on this device until you log out.</span>
+</div>
 {% else %}
 <div class="auth-config-warning">
   {% if not authlib_ready %}
@@ -24,7 +36,11 @@
 </div>
 {% endif %}
 {% if manual_admin_enabled %}
-<div class="auth-divider"><span>Administrator recovery</span></div>
-<a href="{{ url_for('manual_admin_login') }}" class="btn btn-outline btn-block admin-login-link">Manual admin login</a>
+<div class="auth-divider"><span>Manager access</span></div>
+<p class="admin-recovery-copy">Need to authorize team emails or recover access?</p>
+<a href="{{ url_for('manual_admin_login') }}" class="btn btn-outline btn-block admin-login-link">
+  <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="M12 2a5 5 0 0 0-3 9v2H7a2 2 0 0 0-2 2v5h14v-5a2 2 0 0 0-2-2h-2v-2a5 5 0 0 0-3-9Zm0 2a3 3 0 0 1 1 5.8V13h-2V9.8A3 3 0 0 1 12 4Zm-5 11h10v3H7v-3Z" fill="currentColor"/></svg>
+  <span>Manual admin login</span>
+</a>
 {% endif %}
 {% endblock %}

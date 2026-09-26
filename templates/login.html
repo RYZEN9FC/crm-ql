@@ -23,4 +23,8 @@
   {% endif %}
 </div>
 {% endif %}
+{% if manual_admin_enabled %}
+<div class="auth-divider"><span>Administrator recovery</span></div>
+<a href="{{ url_for('manual_admin_login') }}" class="btn btn-outline btn-block admin-login-link">Manual admin login</a>
+{% endif %}
 {% endblock %}

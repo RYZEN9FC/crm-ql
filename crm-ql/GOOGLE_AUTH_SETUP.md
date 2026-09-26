@@ -275,3 +275,58 @@ The value in `GOOGLE_REDIRECT_URI` and the URI registered in Google Cloud are no
 - Keep `SECRET_KEY` stable and private.
 - Remove CRM access immediately when an employee leaves the company.
 
+## Manual administrator recovery login
+
+Use this fallback when Google OAuth works but the manager cannot enter the CRM because user emails have not been assigned yet.
+
+### Option A: Use the original manager password
+
+If the manager existed before Google-only login was introduced, enable the route:
+
+```env
+MANUAL_ADMIN_LOGIN_ENABLED=true
+```
+
+Restart the application and open:
+
+```text
+https://your-crm-domain.com/admin-login
+```
+
+Use the manager's original CRM username and password. Only accounts with the `manager` role are accepted.
+
+### Option B: Create an environment recovery credential
+
+If the original manager password is unavailable, generate a password hash on the server:
+
+```powershell
+python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass('New manual admin password: ')))"
+```
+
+Enter a strong password when prompted and copy the generated hash. Add these values to the production environment file:
+
+```env
+MANUAL_ADMIN_LOGIN_ENABLED=true
+MANUAL_ADMIN_USERNAME=admin
+MANUAL_ADMIN_PASSWORD_HASH=paste-the-generated-hash-here
+```
+
+Do not put the plain-text password in `.env`.
+
+Restart the application, open `/admin-login`, and sign in with `admin` plus the password used to generate the hash. The recovery identity is attached to the first existing manager account.
+
+After login:
+
+1. Open **Users**.
+2. Add the correct Google email to every existing user.
+3. Save each user.
+4. Test Google login for the manager.
+5. Disable the fallback:
+
+```env
+MANUAL_ADMIN_LOGIN_ENABLED=false
+```
+
+6. Restart the application again.
+
+The fallback login is manager-only and is locked for 15 minutes after five failed attempts from the same username or address.

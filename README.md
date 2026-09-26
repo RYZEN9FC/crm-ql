@@ -108,6 +108,29 @@ Example file:
 
 Password login is disabled. Google must return a verified email that is already authorized in the CRM. A successful login creates a persistent CRM session (10 years by default, refreshed with use) so the same browser stays signed in until logout, cookie removal or a server secret change. Change `LOGIN_SESSION_DAYS` if a shorter policy is required.
 
+### Manual Manager Recovery Login
+
+If the first manager cannot use Google yet because no CRM emails have been assigned, temporarily enable the manager-only fallback:
+
+```env
+MANUAL_ADMIN_LOGIN_ENABLED=true
+```
+
+Existing managers created before Google login can use their original manager username and password at `/admin-login`. Alternatively, generate a recovery password hash:
+
+```powershell
+python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass('New manual admin password: ')))"
+```
+
+Then configure the server without storing the plain password:
+
+```env
+MANUAL_ADMIN_USERNAME=admin
+MANUAL_ADMIN_PASSWORD_HASH=paste-the-generated-hash-here
+```
+
+Restart the app, open `/admin-login`, sign in, and assign each user's Google email from **Users**. The fallback accepts manager access only and blocks attempts for 15 minutes after five failures. Set `MANUAL_ADMIN_LOGIN_ENABLED=false` and restart after recovery is complete.
+
 ---
 
 ## Field Sales Workflow

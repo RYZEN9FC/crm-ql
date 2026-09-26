@@ -1,0 +1,19 @@
+{% extends "auth_base.html" %}
+{% block title %}Admin login · Lead Desk{% endblock %}
+{% block content %}
+<h1 class="auth-title">Manual admin login</h1>
+<p class="auth-sub">Manager recovery access for assigning Google emails to existing CRM users.</p>
+<form method="post" action="{{ url_for('manual_admin_login') }}">
+  <div class="form-group">
+    <label>Admin username</label>
+    <input type="text" name="username" autocomplete="username" required autofocus>
+  </div>
+  <div class="form-group">
+    <label>Admin password</label>
+    <input type="password" name="password" autocomplete="current-password" required>
+  </div>
+  <button type="submit" class="btn btn-accent btn-block">Log in as administrator</button>
+</form>
+<a href="{{ url_for('login') }}" class="auth-back-link">← Return to Google login</a>
+<p class="auth-device-note">This route accepts manager accounts only and locks for 15 minutes after five failed attempts.</p>
+{% endblock %}

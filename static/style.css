@@ -789,6 +789,37 @@ td.phone { color: var(--text-soft); font-variant-numeric: tabular-nums; }
   font-size: 13px;
   line-height: 1.5;
 }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 14px;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+.admin-login-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+}
+.auth-back-link {
+  display: inline-block;
+  margin-top: 18px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.auth-back-link:hover { color: var(--accent-dark); }
 
 .inline-email-form {
   display: flex;

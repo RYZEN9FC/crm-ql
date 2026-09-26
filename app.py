@@ -12,8 +12,9 @@ load_dotenv()
 import json
 from functools import wraps
 from datetime import datetime, date, time, timedelta, timezone
-from flask import Flask, render_template, request, redirect, url_for, flash, g, session, jsonify, Response, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, g, session, jsonify, Response, send_file, abort
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import check_password_hash
 
 try:
     from authlib.integrations.flask_client import OAuth
@@ -147,6 +148,21 @@ def init_db():
     db.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub "
         "ON users(google_sub) WHERE google_sub IS NOT NULL AND TRIM(google_sub) <> ''"
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            remote_addr TEXT NOT NULL,
+            success INTEGER NOT NULL DEFAULT 0,
+            attempted_at TEXT NOT NULL
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_admin_login_attempts_lookup "
+        "ON admin_login_attempts(username, remote_addr, attempted_at)"
     )
     db.execute(
         """
@@ -572,7 +588,7 @@ def _reconcile_field_sessions(db):
 
 @app.before_request
 def require_login():
-    open_endpoints = {"login", "setup", "google_login", "google_callback", "static"}
+    open_endpoints = {"login", "setup", "google_login", "google_callback", "manual_admin_login", "static"}
     if request.endpoint in open_endpoints:
         return
     db = get_db()
@@ -632,6 +648,39 @@ def _google_redirect_uri():
     return os.environ.get("GOOGLE_REDIRECT_URI", "").strip() or url_for("google_callback", _external=True)
 
 
+def _manual_admin_login_enabled():
+    return os.environ.get("MANUAL_ADMIN_LOGIN_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _manual_login_remote_addr():
+    return (request.remote_addr or "unknown")[:100]
+
+
+def _manual_login_is_locked(db, username, remote_addr):
+    cutoff = (datetime.now(APP_TIMEZONE) - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+    failures = db.execute(
+        """SELECT COUNT(*) c FROM admin_login_attempts
+           WHERE success=0 AND attempted_at>=? AND (username=? OR remote_addr=?)""",
+        (cutoff, username, remote_addr),
+    ).fetchone()["c"]
+    return failures >= 5
+
+
+def _record_manual_login_attempt(db, username, remote_addr, success):
+    prune_before = (datetime.now(APP_TIMEZONE) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("DELETE FROM admin_login_attempts WHERE attempted_at<?", (prune_before,))
+    db.execute(
+        "INSERT INTO admin_login_attempts (username,remote_addr,success,attempted_at) VALUES (?,?,?,?)",
+        (username, remote_addr, 1 if success else 0, now_str()),
+    )
+    if success:
+        db.execute(
+            "DELETE FROM admin_login_attempts WHERE success=0 AND (username=? OR remote_addr=?)",
+            (username, remote_addr),
+        )
+    db.commit()
+
+
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
     db = get_db()
@@ -668,7 +717,68 @@ def login():
         "login.html",
         google_ready=google is not None,
         authlib_ready=OAuth is not None,
+        manual_admin_enabled=_manual_admin_login_enabled(),
     )
+
+
+@app.route("/admin-login", methods=["GET", "POST"])
+def manual_admin_login():
+    if not _manual_admin_login_enabled():
+        abort(404)
+    if current_user():
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        db = get_db()
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        remote_addr = _manual_login_remote_addr()
+
+        if _manual_login_is_locked(db, username, remote_addr):
+            flash("Too many failed admin login attempts. Try again in 15 minutes.", "error")
+            return redirect(url_for("manual_admin_login"))
+
+        user = db.execute(
+            "SELECT * FROM users WHERE username=? COLLATE NOCASE AND role='manager'",
+            (username,),
+        ).fetchone()
+        valid_legacy_password = bool(
+            user and user["password_hash"] != "google-only"
+            and check_password_hash(user["password_hash"], password)
+        )
+
+        recovery_username = os.environ.get("MANUAL_ADMIN_USERNAME", "").strip().lower()
+        recovery_hash = os.environ.get("MANUAL_ADMIN_PASSWORD_HASH", "").strip()
+        valid_recovery_password = bool(
+            recovery_username and recovery_hash and username == recovery_username
+            and check_password_hash(recovery_hash, password)
+        )
+        if valid_recovery_password and not user:
+            user = db.execute("SELECT * FROM users WHERE role='manager' ORDER BY id LIMIT 1").fetchone()
+
+        if not user or not (valid_legacy_password or valid_recovery_password):
+            _record_manual_login_attempt(db, username, remote_addr, False)
+            flash("Invalid admin username or password.", "error")
+            return redirect(url_for("manual_admin_login"))
+
+        _record_manual_login_attempt(db, username, remote_addr, True)
+        next_url = _safe_next_url(session.get("post_login_next")) or url_for("users_list")
+        session.clear()
+        session.permanent = True
+        session["user_id"] = user["id"]
+        session["role"] = user["role"]
+        g.user = user
+        log_activity(
+            "Manual admin login",
+            "auth",
+            user["id"],
+            user["name"],
+            "Environment recovery credential" if valid_recovery_password else "Legacy manager credential",
+        )
+        flash("Admin access granted. You can now assign Google emails to users.", "success")
+        return redirect(next_url)
+
+    return render_template("manual_admin_login.html")
 
 
 @app.route("/auth/google")

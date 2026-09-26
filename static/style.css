@@ -2092,6 +2092,8 @@ html[data-theme="light"] .gps-status.poor, html[data-theme="light"] .location-qu
   --surface-gradient: linear-gradient(145deg, rgba(24, 28, 37, .98) 0%, rgba(17, 20, 27, .98) 100%);
   --surface-gradient-soft: linear-gradient(145deg, rgba(28, 32, 42, .9) 0%, rgba(18, 21, 28, .94) 100%);
   --surface-gradient-deep: linear-gradient(180deg, #12161e 0%, #0d1016 100%);
+  --card-glow: radial-gradient(105% 125% at 52% 124%, rgba(220, 25, 255, .52) 0%, rgba(125, 32, 219, .29) 35%, rgba(70, 27, 119, .1) 54%, transparent 72%);
+  --card-glow-soft: radial-gradient(105% 125% at 52% 124%, rgba(205, 32, 241, .2) 0%, rgba(116, 42, 185, .1) 39%, transparent 69%);
   --accent-gradient: linear-gradient(135deg, #f0444a 0%, #d91f28 52%, #9f151c 100%);
   --accent-gradient-soft: linear-gradient(135deg, rgba(240, 68, 74, .18), rgba(159, 21, 28, .07));
   --neutral-gradient: linear-gradient(135deg, #ffffff 0%, #e6e8ed 100%);
@@ -2280,47 +2282,38 @@ body {
   min-height: 116px;
   overflow: hidden;
   padding: 21px;
+  border-color: rgba(139, 92, 179, .42);
   border-radius: 14px;
+  background:
+    var(--card-glow),
+    linear-gradient(180deg, #181a23 0%, #101219 100%);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, .28),
+    inset 0 1px rgba(255, 255, 255, .055),
+    inset 0 -1px rgba(220, 42, 255, .13);
   transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .stat-card::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: -55px;
-  right: -42px;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(240, 68, 74, .2), rgba(240, 68, 74, 0) 70%);
+  content: none;
 }
 
 .stat-card::after {
   content: "";
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: linear-gradient(90deg, #ef3b42, #8f1820 50%, transparent 92%);
-}
-
-.stat-card:nth-child(3n + 2)::before {
-  background: radial-gradient(circle, rgba(122, 92, 224, .16), rgba(122, 92, 224, 0) 70%);
-}
-.stat-card:nth-child(3n + 2)::after {
-  background: linear-gradient(90deg, #8f70f1, #4e3b92 50%, transparent 92%);
-}
-.stat-card:nth-child(3n + 3)::before {
-  background: radial-gradient(circle, rgba(82, 184, 132, .14), rgba(82, 184, 132, 0) 70%);
-}
-.stat-card:nth-child(3n + 3)::after {
-  background: linear-gradient(90deg, #52b884, #286648 50%, transparent 92%);
+  inset: auto 12% 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(230, 72, 255, .82), transparent);
+  box-shadow: 0 -5px 18px rgba(204, 36, 255, .18);
 }
 
 .stat-card:hover {
   transform: translateY(-3px);
-  border-color: #414958;
-  box-shadow: var(--panel-shadow-hover), inset 0 1px rgba(255, 255, 255, .05);
+  border-color: rgba(204, 95, 235, .58);
+  box-shadow:
+    0 21px 44px rgba(0, 0, 0, .34),
+    0 12px 30px rgba(119, 27, 165, .11),
+    inset 0 1px rgba(255, 255, 255, .07);
 }
 
 .stat-value {
@@ -2513,16 +2506,20 @@ td { padding: 13px 16px; }
 
 .kanban-card {
   border-color: #303744;
-  background: linear-gradient(145deg, #1b202a, #141820);
+  background:
+    var(--card-glow-soft),
+    linear-gradient(180deg, #1b1e27, #13161d);
   box-shadow: 0 8px 20px rgba(0, 0, 0, .16), inset 0 1px rgba(255, 255, 255, .025);
   transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 
 .kanban-card:hover {
   transform: translateY(-2px);
-  border-color: #4b5363;
-  background: linear-gradient(145deg, #222833, #181c25);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, .24);
+  border-color: rgba(168, 101, 207, .48);
+  background:
+    var(--card-glow),
+    linear-gradient(180deg, #1d202a, #14161e);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, .27), 0 10px 26px rgba(119, 27, 165, .08);
 }
 
 .field-session-card.session-active {
@@ -2536,24 +2533,27 @@ td { padding: 13px 16px; }
 .visit-card {
   position: relative;
   overflow: hidden;
+  background:
+    var(--card-glow-soft),
+    linear-gradient(180deg, #191c25, #11141b);
   box-shadow: var(--panel-shadow), inset 0 1px rgba(255, 255, 255, .035);
 }
 
 .visit-card::after {
   content: "";
   position: absolute;
-  right: -45px;
-  bottom: -65px;
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(227, 30, 36, .12), transparent 68%);
+  right: 12%;
+  bottom: 0;
+  left: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(224, 66, 255, .58), transparent);
+  box-shadow: 0 -5px 18px rgba(204, 36, 255, .12);
   pointer-events: none;
 }
 
 .visit-card:hover {
-  border-color: #485061;
-  box-shadow: var(--panel-shadow-hover);
+  border-color: rgba(168, 101, 207, .48);
+  box-shadow: var(--panel-shadow-hover), 0 12px 28px rgba(119, 27, 165, .09);
 }
 
 .camera-capture,
@@ -2633,6 +2633,14 @@ html[data-theme="light"] .location-map {
   border-color: #e1e4e9;
   background: linear-gradient(145deg, #fff, #f8f9fb);
   box-shadow: 0 14px 34px rgba(27, 31, 40, .07), inset 0 1px #fff;
+}
+
+html[data-theme="light"] .stat-card {
+  border-color: #dfd7e8;
+  background:
+    radial-gradient(105% 125% at 52% 124%, rgba(205, 56, 230, .14), rgba(126, 67, 183, .055) 40%, transparent 70%),
+    linear-gradient(180deg, #fff, #f8f7fb);
+  box-shadow: 0 14px 34px rgba(52, 35, 73, .085), inset 0 1px #fff;
 }
 
 html[data-theme="light"] .pipeline,

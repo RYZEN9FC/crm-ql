@@ -2092,8 +2092,8 @@ html[data-theme="light"] .gps-status.poor, html[data-theme="light"] .location-qu
   --surface-gradient: linear-gradient(145deg, rgba(24, 28, 37, .98) 0%, rgba(17, 20, 27, .98) 100%);
   --surface-gradient-soft: linear-gradient(145deg, rgba(28, 32, 42, .9) 0%, rgba(18, 21, 28, .94) 100%);
   --surface-gradient-deep: linear-gradient(180deg, #12161e 0%, #0d1016 100%);
-  --card-glow: radial-gradient(105% 125% at 52% 124%, rgba(220, 25, 255, .52) 0%, rgba(125, 32, 219, .29) 35%, rgba(70, 27, 119, .1) 54%, transparent 72%);
-  --card-glow-soft: radial-gradient(105% 125% at 52% 124%, rgba(205, 32, 241, .2) 0%, rgba(116, 42, 185, .1) 39%, transparent 69%);
+  --card-glow: radial-gradient(105% 125% at 52% 124%, rgba(240, 52, 59, .5) 0%, rgba(190, 25, 34, .27) 35%, rgba(111, 19, 25, .1) 54%, transparent 72%);
+  --card-glow-soft: radial-gradient(105% 125% at 52% 124%, rgba(227, 30, 36, .2) 0%, rgba(159, 21, 28, .1) 39%, transparent 69%);
   --accent-gradient: linear-gradient(135deg, #f0444a 0%, #d91f28 52%, #9f151c 100%);
   --accent-gradient-soft: linear-gradient(135deg, rgba(240, 68, 74, .18), rgba(159, 21, 28, .07));
   --neutral-gradient: linear-gradient(135deg, #ffffff 0%, #e6e8ed 100%);
@@ -2282,7 +2282,7 @@ body {
   min-height: 116px;
   overflow: hidden;
   padding: 21px;
-  border-color: rgba(139, 92, 179, .42);
+  border-color: rgba(174, 58, 64, .44);
   border-radius: 14px;
   background:
     var(--card-glow),
@@ -2290,7 +2290,7 @@ body {
   box-shadow:
     0 16px 36px rgba(0, 0, 0, .28),
     inset 0 1px rgba(255, 255, 255, .055),
-    inset 0 -1px rgba(220, 42, 255, .13);
+    inset 0 -1px rgba(240, 68, 74, .15);
   transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
@@ -2303,16 +2303,16 @@ body {
   position: absolute;
   inset: auto 12% 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(230, 72, 255, .82), transparent);
-  box-shadow: 0 -5px 18px rgba(204, 36, 255, .18);
+  background: linear-gradient(90deg, transparent, rgba(255, 82, 88, .84), transparent);
+  box-shadow: 0 -5px 18px rgba(227, 30, 36, .2);
 }
 
 .stat-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(204, 95, 235, .58);
+  border-color: rgba(240, 88, 94, .6);
   box-shadow:
     0 21px 44px rgba(0, 0, 0, .34),
-    0 12px 30px rgba(119, 27, 165, .11),
+    0 12px 30px rgba(159, 21, 28, .12),
     inset 0 1px rgba(255, 255, 255, .07);
 }
 
@@ -2515,11 +2515,11 @@ td { padding: 13px 16px; }
 
 .kanban-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(168, 101, 207, .48);
+  border-color: rgba(218, 76, 82, .5);
   background:
     var(--card-glow),
     linear-gradient(180deg, #1d202a, #14161e);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, .27), 0 10px 26px rgba(119, 27, 165, .08);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, .27), 0 10px 26px rgba(159, 21, 28, .09);
 }
 
 .field-session-card.session-active {
@@ -2546,14 +2546,14 @@ td { padding: 13px 16px; }
   bottom: 0;
   left: 12%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(224, 66, 255, .58), transparent);
-  box-shadow: 0 -5px 18px rgba(204, 36, 255, .12);
+  background: linear-gradient(90deg, transparent, rgba(255, 82, 88, .64), transparent);
+  box-shadow: 0 -5px 18px rgba(227, 30, 36, .14);
   pointer-events: none;
 }
 
 .visit-card:hover {
-  border-color: rgba(168, 101, 207, .48);
-  box-shadow: var(--panel-shadow-hover), 0 12px 28px rgba(119, 27, 165, .09);
+  border-color: rgba(218, 76, 82, .5);
+  box-shadow: var(--panel-shadow-hover), 0 12px 28px rgba(159, 21, 28, .1);
 }
 
 .camera-capture,
@@ -2636,11 +2636,11 @@ html[data-theme="light"] .location-map {
 }
 
 html[data-theme="light"] .stat-card {
-  border-color: #dfd7e8;
+  border-color: #ead5d7;
   background:
-    radial-gradient(105% 125% at 52% 124%, rgba(205, 56, 230, .14), rgba(126, 67, 183, .055) 40%, transparent 70%),
+    radial-gradient(105% 125% at 52% 124%, rgba(227, 30, 36, .14), rgba(159, 21, 28, .055) 40%, transparent 70%),
     linear-gradient(180deg, #fff, #f8f7fb);
-  box-shadow: 0 14px 34px rgba(52, 35, 73, .085), inset 0 1px #fff;
+  box-shadow: 0 14px 34px rgba(86, 31, 35, .085), inset 0 1px #fff;
 }
 
 html[data-theme="light"] .pipeline,

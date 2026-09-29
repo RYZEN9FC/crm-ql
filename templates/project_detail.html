@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · Projects{% endblock %}
+{% block content %}
+<div class="page-header"><div><div class="project-card-top"><span class="project-status status-{{ project.status|slug }}">{{ project.status }}</span><span class="priority priority-{{ project.priority|lower }}">{{ project.priority }}</span></div><h1 class="page-title">{{ project.name }}</h1><p class="page-sub">{{ project.company_name or 'Independent internal project' }} · Assigned to {{ project.project_manager_name }}</p></div><a class="btn btn-outline" href="{{ url_for('projects_list') }}">All projects</a></div>
+
+<div class="project-detail-grid">
+  <section>
+    <div class="card project-overview"><h2 class="section-title">Project overview</h2>
+      {% if project.description %}<p class="project-description">{{ project.description }}</p>{% endif %}
+      <div class="project-info-grid"><div><span>Start date</span><strong>{{ project.start_date or '—' }}</strong></div><div><span>Target date</span><strong>{{ project.target_date or '—' }}</strong></div><div><span>Budget</span><strong>{{ '₹{:,.0f}'.format(project.budget) if project.budget is not none else '—' }}</strong></div><div><span>Progress</span><strong>{{ completed_count }}/{{ tasks|length }} tasks</strong></div></div>
+      {% if project.lead_id %}<a class="project-linked-record" href="{{ url_for('lead_detail', lead_id=project.lead_id) }}">CRM lead · {{ project.lead_name }}</a>{% endif %}
+    </div>
+    <h2 class="section-title">Tasks</h2>
+    <div class="task-list">
+      {% for task in tasks %}
+      <article class="task-row"><div class="task-main"><div class="task-title">{{ task.title }}</div>{% if task.description %}<div class="task-description">{{ task.description }}</div>{% endif %}<div class="task-meta"><span class="priority priority-{{ task.priority|lower }}">{{ task.priority }}</span><span>Assigned to · {{ task.assignee_name or 'Unassigned' }}</span>{% if task.due_date %}<span>Due · {{ task.due_date }}</span>{% endif %}</div></div>
+        <div class="task-actions">{% if can_manage or task.assignee_id == current_user.id %}<form method="post" action="{{ url_for('project_update_task_status', project_id=project.id, task_id=task.id) }}"><select name="status" onchange="this.form.submit()">{% for status in task_statuses %}<option {% if task.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></form>{% else %}<span class="project-status status-{{ task.status|slug }}">{{ task.status }}</span>{% endif %}</div>
+      </article>
+      {% else %}<div class="empty-state">No tasks yet. Add the first deliverable below.</div>{% endfor %}
+    </div>
+    {% if can_manage %}<form method="post" action="{{ url_for('project_add_task', project_id=project.id) }}" class="card task-create-form"><h2 class="section-title">Add task</h2><div class="form-grid"><div class="form-group"><label>Task *</label><input name="title" required placeholder="e.g. Share first design concept"></div><div class="form-group"><label>Assigned to</label><select name="assignee_id"><option value="">Unassigned</option>{% for person in users %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}</select></div><div class="form-group"><label>Due date</label><input type="date" name="due_date"></div><div class="form-group"><label>Priority</label><select name="priority">{% for priority in priorities %}<option {% if priority == 'Medium' %}selected{% endif %}>{{ priority }}</option>{% endfor %}</select></div><div class="form-group"><label>Estimated hours</label><input type="number" min="0" step="0.5" name="estimated_hours"></div></div><div class="form-group"><label>Details</label><textarea name="description" rows="2" placeholder="Acceptance criteria or useful context"></textarea></div><button class="btn btn-accent">Assign task</button></form>{% endif %}
+  </section>
+  <aside>
+    {% if can_manage %}<form method="post" action="{{ url_for('project_update_status', project_id=project.id) }}" class="card project-status-form"><h2 class="section-title">Project status</h2><select name="status">{% for status in ['Planning','In Progress','On Hold','Client Review','Completed','Cancelled'] %}<option {% if project.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select><button class="btn btn-outline btn-block">Update status</button></form>{% endif %}
+    <div class="card"><h2 class="section-title">Project team</h2><div class="project-team">{% for member in members %}<div><span class="team-avatar">{{ member.name[:1]|upper }}</span><span>{{ member.name }}</span><small>{{ member.role }}</small></div>{% endfor %}</div></div>
+    <div class="card"><h2 class="section-title">Activity</h2><div class="project-activity">{% for activity in activities %}<div><strong>{{ activity.event }}</strong>{% if activity.detail %}<span>{{ activity.detail }}</span>{% endif %}<small>{{ activity.user_name or 'System' }} · {{ activity.created_at }}</small></div>{% else %}<div class="empty-state">No project updates yet.</div>{% endfor %}</div></div>
+  </aside>
+</div>
+{% endblock %}

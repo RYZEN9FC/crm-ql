@@ -65,6 +65,8 @@ INTEREST_LEVELS = ["Hot", "Warm", "Cold"]
 PRIORITIES = ["High", "Medium", "Low"]
 BUDGET_RANGES = ["Under 25k", "25k-50k", "50k-1L", "1L-2L", "2L-5L", "5L+"]
 COMPANY_STATUSES = ["Prospect", "Customer", "Inactive"]
+PROJECT_STATUSES = ["Planning", "In Progress", "On Hold", "Client Review", "Completed", "Cancelled"]
+TASK_STATUSES = ["To Do", "In Progress", "Internal Review", "Client Review", "Completed"]
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
@@ -467,6 +469,76 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_field_visits_review ON field_visits(review_status)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_field_sessions_user_date ON field_work_sessions(user_id, work_date)")
 
+    # Project management: a project may be created from a won lead or independently.
+    # Project membership controls visibility for staff; managers retain company-wide access.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            lead_id INTEGER,
+            company_id INTEGER,
+            project_manager_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Planning',
+            priority TEXT NOT NULL DEFAULT 'Medium',
+            start_date TEXT,
+            target_date TEXT,
+            budget REAL,
+            description TEXT,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+            FOREIGN KEY (project_manager_id) REFERENCES users(id) ON DELETE RESTRICT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS project_members (
+            project_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (project_id, user_id),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS project_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            assignee_id INTEGER,
+            due_date TEXT,
+            priority TEXT NOT NULL DEFAULT 'Medium',
+            status TEXT NOT NULL DEFAULT 'To Do',
+            estimated_hours REAL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS project_activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            user_id INTEGER,
+            event TEXT NOT NULL,
+            detail TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_projects_manager ON projects(project_manager_id, status)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_project_tasks_assignee ON project_tasks(assignee_id, status, due_date)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id)")
+
     db.commit()
     db.close()
 
@@ -628,6 +700,36 @@ def visible_leads_clause(user):
     if user["role"] == "field_sales":
         return f"(owner_id = ? OR {shared_clause} OR {visit_clause})", [user["id"], user["id"], user["id"]]
     return f"(owner_id = ? OR {shared_clause})", [user["id"], user["id"]]
+
+
+# ---------- Project management helpers ----------
+
+def visible_projects_clause(user, alias="projects"):
+    """Return a visibility clause for projects.
+
+    Managers can see the complete delivery portfolio. Everyone else sees a
+    project only when they own it, belong to its team, or have a task on it.
+    """
+    if user["role"] == "manager":
+        return "1=1", []
+    return (
+        f"({alias}.project_manager_id=? OR "
+        f"EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id={alias}.id AND pm.user_id=?) OR "
+        f"EXISTS (SELECT 1 FROM project_tasks pt WHERE pt.project_id={alias}.id AND pt.assignee_id=?))",
+        [user["id"], user["id"], user["id"]],
+    )
+
+
+def can_manage_project(user, project):
+    return bool(user and project and (user["role"] == "manager" or project["project_manager_id"] == user["id"]))
+
+
+def log_project_event(db, project_id, event, detail=""):
+    user = current_user()
+    db.execute(
+        "INSERT INTO project_activities (project_id,user_id,event,detail,created_at) VALUES (?,?,?,?,?)",
+        (project_id, user["id"] if user else None, event, detail, now_str()),
+    )
 
 
 # ---------- Setup / Auth ----------
@@ -970,6 +1072,11 @@ def delete_user(user_id):
         return redirect(url_for("users_list"))
     db = get_db()
     db.execute("UPDATE leads SET owner_id = NULL WHERE owner_id = ?", (user_id,))
+    # A project always needs an accountable owner. Move any projects owned by a
+    # departing user to the manager performing the removal; task assignees and
+    # membership are safely cleared by their foreign-key rules.
+    db.execute("UPDATE projects SET project_manager_id=?,updated_at=? WHERE project_manager_id=?",
+               (session["user_id"], now_str(), user_id))
     db.execute("DELETE FROM users WHERE id = ?", (user_id,))
     db.commit()
     flash("User removed. Their leads are kept, now unassigned.", "success")
@@ -1922,6 +2029,193 @@ def unshare_lead(lead_id, user_id):
     log_activity("Access Revoked", "lead", lead_id, lead["name"], f"Revoked from {revoked['name']}" if revoked else "")
     flash("Access revoked.", "success")
     return redirect(url_for("lead_detail", lead_id=lead_id))
+
+
+# ---------- Project management ----------
+
+@app.route("/projects")
+@login_required
+def projects_list():
+    db = get_db()
+    user = current_user()
+    clause, params = visible_projects_clause(user, "p")
+    projects = db.execute(
+        f"""SELECT p.*, pm.name AS project_manager_name, l.name AS lead_name, c.name AS company_name,
+                   COUNT(t.id) AS task_count, SUM(CASE WHEN t.status='Completed' THEN 1 ELSE 0 END) AS completed_task_count
+            FROM projects p LEFT JOIN users pm ON pm.id=p.project_manager_id
+            LEFT JOIN leads l ON l.id=p.lead_id LEFT JOIN companies c ON c.id=p.company_id
+            LEFT JOIN project_tasks t ON t.project_id=p.id WHERE {clause}
+            GROUP BY p.id
+            ORDER BY CASE p.status WHEN 'In Progress' THEN 0 WHEN 'Planning' THEN 1 WHEN 'On Hold' THEN 2 ELSE 3 END,
+                     p.target_date IS NULL, p.target_date, p.updated_at DESC""", params,
+    ).fetchall()
+    summary = {
+        "active": sum(1 for p in projects if p["status"] in {"Planning", "In Progress", "Client Review"}),
+        "at_risk": sum(1 for p in projects if p["target_date"] and p["target_date"] < today_str() and p["status"] not in {"Completed", "Cancelled"}),
+        "completed": sum(1 for p in projects if p["status"] == "Completed"),
+        "tasks": sum(p["task_count"] or 0 for p in projects),
+    }
+    return render_template("projects.html", projects=projects, summary=summary)
+
+
+@app.route("/projects/new", methods=["GET", "POST"])
+@manager_required
+def project_new():
+    db = get_db()
+    user = current_user()
+    won_leads = db.execute("""SELECT l.id,l.name,l.company_id,c.name AS company_name FROM leads l
+        LEFT JOIN companies c ON c.id=l.company_id WHERE l.stage='Won' ORDER BY c.name,l.name""").fetchall()
+    team_users = db.execute("SELECT id,name,role FROM users ORDER BY name").fetchall()
+    selected_lead_id = request.values.get("lead_id", type=int)
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        lead_id = request.form.get("lead_id", type=int)
+        manager_id = request.form.get("project_manager_id", type=int)
+        status, priority = request.form.get("status", "Planning"), request.form.get("priority", "Medium")
+        if not name or not manager_id or status not in PROJECT_STATUSES or priority not in PRIORITIES:
+            flash("Enter a project name, owner, valid status and priority.", "error")
+            return redirect(url_for("project_new", lead_id=lead_id or ""))
+        if not db.execute("SELECT id FROM users WHERE id=?", (manager_id,)).fetchone():
+            flash("Choose a valid project owner.", "error")
+            return redirect(url_for("project_new"))
+        lead = None
+        if lead_id:
+            lead = db.execute("SELECT id,company_id,stage FROM leads WHERE id=?", (lead_id,)).fetchone()
+            if not lead or lead["stage"] != "Won":
+                flash("Projects can only be linked to a won lead.", "error")
+                return redirect(url_for("project_new"))
+        try:
+            budget_raw = request.form.get("budget", "").strip()
+            budget = float(budget_raw) if budget_raw else None
+        except ValueError:
+            flash("Budget must be a valid number.", "error")
+            return redirect(url_for("project_new", lead_id=lead_id or ""))
+        now = now_str()
+        cursor = db.execute("""INSERT INTO projects
+            (name,lead_id,company_id,project_manager_id,status,priority,start_date,target_date,budget,description,created_by,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (name, lead_id or None, lead["company_id"] if lead else None, manager_id, status, priority,
+             request.form.get("start_date") or None, request.form.get("target_date") or None, budget,
+             request.form.get("description", "").strip(), user["id"], now, now))
+        project_id = cursor.lastrowid
+        selected_ids = {manager_id}
+        for value in request.form.getlist("member_ids"):
+            try: selected_ids.add(int(value))
+            except ValueError: pass
+        valid_ids = {row["id"] for row in team_users}
+        for member_id in selected_ids & valid_ids:
+            db.execute("INSERT INTO project_members (project_id,user_id,added_at) VALUES (?,?,?)", (project_id, member_id, now))
+        log_project_event(db, project_id, "Project created", f"Owner: {manager_id}; team: {len(selected_ids & valid_ids)}")
+        db.commit()
+        log_activity("Created project", "project", project_id, name, "Project management")
+        flash("Project created and team assigned.", "success")
+        return redirect(url_for("project_detail", project_id=project_id))
+    return render_template("project_form.html", won_leads=won_leads, team_users=team_users,
+        statuses=PROJECT_STATUSES, priorities=PRIORITIES, selected_lead_id=selected_lead_id)
+
+
+def _project_detail_row(db, project_id, user):
+    clause, params = visible_projects_clause(user, "p")
+    return db.execute(f"""SELECT p.*,pm.name AS project_manager_name,l.name AS lead_name,c.name AS company_name
+        FROM projects p LEFT JOIN users pm ON pm.id=p.project_manager_id LEFT JOIN leads l ON l.id=p.lead_id
+        LEFT JOIN companies c ON c.id=p.company_id WHERE p.id=? AND {clause}""", [project_id, *params]).fetchone()
+
+
+@app.route("/projects/<int:project_id>")
+@login_required
+def project_detail(project_id):
+    db = get_db()
+    user = current_user()
+    project = _project_detail_row(db, project_id, user)
+    if not project:
+        flash("Project not found, or it is not assigned to you.", "error")
+        return redirect(url_for("projects_list"))
+    members = db.execute("SELECT u.id,u.name,u.role FROM project_members pm JOIN users u ON u.id=pm.user_id WHERE pm.project_id=? ORDER BY u.name", (project_id,)).fetchall()
+    tasks = db.execute("""SELECT t.*,u.name AS assignee_name FROM project_tasks t LEFT JOIN users u ON u.id=t.assignee_id
+        WHERE t.project_id=? ORDER BY CASE t.status WHEN 'In Progress' THEN 0 WHEN 'To Do' THEN 1 WHEN 'Internal Review' THEN 2 WHEN 'Client Review' THEN 3 ELSE 4 END,
+        t.due_date IS NULL,t.due_date,t.id DESC""", (project_id,)).fetchall()
+    activities = db.execute("""SELECT a.*,u.name AS user_name FROM project_activities a LEFT JOIN users u ON u.id=a.user_id
+        WHERE a.project_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 30""", (project_id,)).fetchall()
+    all_users = db.execute("SELECT id,name,role FROM users ORDER BY name").fetchall()
+    return render_template("project_detail.html", project=project, members=members, tasks=tasks, activities=activities,
+        users=all_users, can_manage=can_manage_project(user, project), task_statuses=TASK_STATUSES,
+        priorities=PRIORITIES, completed_count=sum(1 for task in tasks if task["status"] == "Completed"))
+
+
+@app.route("/projects/<int:project_id>/status", methods=["POST"])
+@login_required
+def project_update_status(project_id):
+    db = get_db(); user = current_user(); project = _project_detail_row(db, project_id, user)
+    if not project or not can_manage_project(user, project):
+        flash("Only the project owner or a manager can update this project.", "error")
+        return redirect(url_for("projects_list"))
+    status = request.form.get("status")
+    if status not in PROJECT_STATUSES:
+        flash("Choose a valid project status.", "error")
+    elif status != project["status"]:
+        db.execute("UPDATE projects SET status=?,updated_at=? WHERE id=?", (status, now_str(), project_id))
+        log_project_event(db, project_id, "Project status updated", f"{project['status']} → {status}")
+        db.commit(); log_activity("Updated project status", "project", project_id, project["name"], status)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/projects/<int:project_id>/tasks", methods=["POST"])
+@login_required
+def project_add_task(project_id):
+    db = get_db(); user = current_user(); project = _project_detail_row(db, project_id, user)
+    if not project or not can_manage_project(user, project):
+        flash("Only the project owner or a manager can add tasks.", "error")
+        return redirect(url_for("projects_list"))
+    title, assignee_id, priority = request.form.get("title", "").strip(), request.form.get("assignee_id", type=int), request.form.get("priority", "Medium")
+    if not title or priority not in PRIORITIES:
+        flash("Enter a task title and valid priority.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    if assignee_id and not db.execute("SELECT id FROM users WHERE id=?", (assignee_id,)).fetchone():
+        flash("Choose a valid task assignee.", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    now = now_str()
+    db.execute("""INSERT INTO project_tasks
+        (project_id,title,description,assignee_id,due_date,priority,status,estimated_hours,created_by,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (project_id, title, request.form.get("description", "").strip(), assignee_id or None,
+        request.form.get("due_date") or None, priority, "To Do", request.form.get("estimated_hours", type=float), user["id"], now, now))
+    if assignee_id:
+        db.execute("INSERT OR IGNORE INTO project_members (project_id,user_id,added_at) VALUES (?,?,?)", (project_id, assignee_id, now))
+    db.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+    log_project_event(db, project_id, "Task assigned", title)
+    db.commit(); log_activity("Created task", "project", project_id, project["name"], title)
+    flash("Task added.", "success")
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>/status", methods=["POST"])
+@login_required
+def project_update_task_status(project_id, task_id):
+    db = get_db(); user = current_user(); project = _project_detail_row(db, project_id, user)
+    task = db.execute("SELECT * FROM project_tasks WHERE id=? AND project_id=?", (task_id, project_id)).fetchone()
+    if not project or not task or not (can_manage_project(user, project) or task["assignee_id"] == user["id"]):
+        flash("You can only update tasks assigned to you.", "error")
+        return redirect(url_for("projects_list"))
+    status = request.form.get("status")
+    if status not in TASK_STATUSES:
+        flash("Choose a valid task status.", "error")
+    elif status != task["status"]:
+        now = now_str()
+        db.execute("UPDATE project_tasks SET status=?,updated_at=?,completed_at=? WHERE id=?", (status, now, now if status == "Completed" else None, task_id))
+        db.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+        log_project_event(db, project_id, "Task status updated", f"{task['title']}: {task['status']} → {status}")
+        db.commit(); log_activity("Updated task", "project", project_id, project["name"], f"{task['title']} → {status}")
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/my-tasks")
+@login_required
+def my_tasks():
+    db = get_db(); user = current_user()
+    tasks = db.execute("""SELECT t.*,p.name AS project_name,p.status AS project_status,c.name AS company_name
+        FROM project_tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN companies c ON c.id=p.company_id
+        WHERE t.assignee_id=? AND t.status!='Completed'
+        ORDER BY t.due_date IS NULL,t.due_date,CASE t.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END,t.id DESC""", (user["id"],)).fetchall()
+    return render_template("my_tasks.html", tasks=tasks, task_statuses=TASK_STATUSES)
 
 
 # ---------- Companies (the center of everything) ----------

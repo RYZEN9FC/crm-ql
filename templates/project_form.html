@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}New Project · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1 class="page-title">Create project</h1><p class="page-sub">Link it to a won lead, or leave the lead blank for internal work.</p></div><a class="btn btn-outline" href="{{ url_for('projects_list') }}">Cancel</a></div>
+<form method="post" class="form-card project-form">
+  <div class="form-section"><h2 class="section-title">Project details</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Project name *</label><input name="name" required placeholder="e.g. Acme website redesign"></div>
+      <div class="form-group"><label>CRM lead (optional)</label><select name="lead_id"><option value="">Independent project</option>{% for lead in won_leads %}<option value="{{ lead.id }}" {% if selected_lead_id == lead.id %}selected{% endif %}>{{ lead.company_name or 'No company' }} · {{ lead.name }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Assigned to / project owner *</label><select name="project_manager_id" required>{% for person in team_users %}<option value="{{ person.id }}" {% if person.id == current_user.id %}selected{% endif %}>{{ person.name }} · {{ person.role }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Status</label><select name="status">{% for status in statuses %}<option>{{ status }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Priority</label><select name="priority">{% for priority in priorities %}<option {% if priority == 'Medium' %}selected{% endif %}>{{ priority }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Budget (₹)</label><input type="number" min="0" step="0.01" name="budget" placeholder="Optional"></div>
+      <div class="form-group"><label>Start date</label><input type="date" name="start_date"></div>
+      <div class="form-group"><label>Target date</label><input type="date" name="target_date"></div>
+    </div>
+    <div class="form-group"><label>Scope / delivery notes</label><textarea name="description" rows="4" placeholder="What is being delivered, client expectations, exclusions and handover notes."></textarea></div>
+  </div>
+  <div class="form-section"><h2 class="section-title">Project team</h2><p class="page-sub">The owner is added automatically. Select everyone who should be able to see the project.</p>
+    <div class="checkbox-grid project-member-grid">{% for person in team_users %}<label class="check-line"><input type="checkbox" name="member_ids" value="{{ person.id }}" {% if person.id == current_user.id %}checked{% endif %}> <span>{{ person.name }}</span><small>{{ person.role }}</small></label>{% endfor %}</div>
+  </div>
+  <button class="btn btn-accent">Create project</button>
+</form>
+{% endblock %}

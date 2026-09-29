@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Projects · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1 class="page-title">Projects</h1><p class="page-sub">Delivery work, deadlines and responsibilities in one place.</p></div>
+  {% if current_user.role == 'manager' %}<a class="btn btn-accent" href="{{ url_for('project_new') }}">+ New project</a>{% endif %}
+</div>
+
+<div class="stat-grid project-stats">
+  <div class="stat-card"><div class="stat-value">{{ summary.active }}</div><div class="stat-label">Active projects</div></div>
+  <div class="stat-card"><div class="stat-value">{{ summary.at_risk }}</div><div class="stat-label">Past target date</div></div>
+  <div class="stat-card"><div class="stat-value">{{ summary.tasks }}</div><div class="stat-label">Tasks visible to you</div></div>
+  <div class="stat-card"><div class="stat-value">{{ summary.completed }}</div><div class="stat-label">Completed projects</div></div>
+</div>
+
+<div class="project-grid">
+{% for project in projects %}
+  <a class="project-card" href="{{ url_for('project_detail', project_id=project.id) }}">
+    <div class="project-card-top"><span class="project-status status-{{ project.status|slug }}">{{ project.status }}</span><span class="priority priority-{{ project.priority|lower }}">{{ project.priority }}</span></div>
+    <h2>{{ project.name }}</h2>
+    <p class="project-client">{{ project.company_name or 'Independent internal project' }}</p>
+    <div class="project-progress"><span style="width: {{ ((project.completed_task_count or 0) / project.task_count * 100) if project.task_count else 0 }}%"></span></div>
+    <div class="project-card-meta"><span>{{ project.completed_task_count or 0 }}/{{ project.task_count }} tasks</span><span>{{ project.target_date or 'No target date' }}</span></div>
+    <div class="project-owner">Assigned to · {{ project.project_manager_name or 'Unassigned' }}</div>
+  </a>
+{% else %}
+  <div class="empty-state project-empty">No projects are assigned to you yet.{% if current_user.role == 'manager' %} Create one from a won lead or start an independent internal project.{% endif %}</div>
+{% endfor %}
+</div>
+{% endblock %}

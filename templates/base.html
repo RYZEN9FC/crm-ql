@@ -17,7 +17,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=13">
 </head>
 <body>
 <div class="shell">
@@ -55,6 +55,8 @@
       <a href="{{ url_for('leads_list') }}" class="nav-link {% if request.endpoint in ['leads_list','lead_detail'] %}active{% endif %}">Leads (List)</a>
       <a href="{{ url_for('leads_kanban') }}" class="nav-link {% if request.endpoint == 'leads_kanban' %}active{% endif %}">Leads (Kanban)</a>
       <a href="{{ url_for('contacts_list') }}" class="nav-link {% if request.endpoint in ['contacts_list','company_detail'] %}active{% endif %}">Companies</a>
+      <a href="{{ url_for('projects_list') }}" class="nav-link {% if request.endpoint in ['projects_list','project_new','project_detail'] %}active{% endif %}">Projects</a>
+      <a href="{{ url_for('my_tasks') }}" class="nav-link {% if request.endpoint == 'my_tasks' %}active{% endif %}">My Tasks</a>
       {% if current_user and current_user.role in ['manager','field_sales'] %}
       <a href="{{ url_for('field_visits') }}" class="nav-link {% if request.endpoint in ['field_visits','field_visit_new','field_visit_detail'] %}active{% endif %}">Field Sales</a>
       {% endif %}

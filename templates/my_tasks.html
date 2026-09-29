@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}My Tasks · Lead Desk{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1 class="page-title">My Tasks</h1><p class="page-sub">Your open delivery work, sorted by deadline and priority.</p></div><a class="btn btn-outline" href="{{ url_for('projects_list') }}">Projects</a></div>
+<div class="task-list my-task-list">{% for task in tasks %}<article class="task-row"><div class="task-main"><a class="task-title" href="{{ url_for('project_detail', project_id=task.project_id) }}">{{ task.title }}</a><div class="task-description">{{ task.project_name }}{% if task.company_name %} · {{ task.company_name }}{% endif %}</div><div class="task-meta"><span class="priority priority-{{ task.priority|lower }}">{{ task.priority }}</span>{% if task.due_date %}<span>Due · {{ task.due_date }}</span>{% endif %}</div></div><div class="task-actions"><form method="post" action="{{ url_for('project_update_task_status', project_id=task.project_id, task_id=task.id) }}"><select name="status" onchange="this.form.submit()">{% for status in task_statuses %}<option {% if task.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></form></div></article>{% else %}<div class="empty-state">You have no open project tasks.</div>{% endfor %}</div>
+{% endblock %}

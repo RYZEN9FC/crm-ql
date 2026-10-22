@@ -8,15 +8,13 @@
 (function () {
   try {
     var saved = localStorage.getItem('leaddesk-theme');
-    if (saved === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light');
-    }
+    document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
   } catch (e) {}
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=13">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=15">
 </head>
 <body>
 <div class="auth-shell">
@@ -49,11 +47,7 @@
     var root = document.documentElement;
     var isLight = root.getAttribute('data-theme') === 'light';
     var next = isLight ? 'dark' : 'light';
-    if (next === 'dark') {
-      root.removeAttribute('data-theme');
-    } else {
-      root.setAttribute('data-theme', 'light');
-    }
+    root.setAttribute('data-theme', next);
     try { localStorage.setItem('leaddesk-theme', next); } catch (e) {}
   });
 })();

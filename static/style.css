@@ -3027,3 +3027,27 @@ html:root:not(.x) .auth-card .company-logo-dark, html:root:not(.x) .content .com
 html:root:not(.x) .auth-card .company-logo-light, html:root:not(.x) .content .company-logo-light { display: block; }
 html:root[data-theme="dark"] .auth-card .company-logo-dark { display: block; }
 html:root[data-theme="dark"] .auth-card .company-logo-light { display: none; }
+
+/* ---- Glass theme spacing fixes ---- */
+html:root .sidebar {
+  gap: 16px;
+  padding: 20px 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+html:root .sidebar::-webkit-scrollbar { display: none; }
+html:root .sidebar .user-card { margin-top: auto; padding: 12px; flex-shrink: 0; }
+html:root .sidebar .nav { flex-shrink: 0; gap: 3px; }
+html:root .sidebar .logo-slot { padding: 2px 6px 14px; margin-bottom: 0; }
+html:root input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]),
+html:root select,
+html:root textarea {
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 12px;
+  color: var(--text);
+}
+html:root td input:not([type="checkbox"]):not([type="radio"]), html:root td select { padding: 7px 10px; min-width: 0; }
+html:root .table-card { overflow-x: auto; }
+html:root .sidebar .sidebar-search input { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .12); color: #fff; }
+html:root .sidebar .sidebar-search input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]) { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .12); color: #fff; }
